@@ -1,0 +1,32 @@
+{
+  "name": "gridgame",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "migrate": "node --env-file=.env.local scripts/sql.mjs --file supabase/migrations/0001_init.sql",
+    "sql": "node --env-file=.env.local scripts/sql.mjs"
+  },
+  "//overrides": "next 15.x pins vulnerable postcss/sharp transitively; both are build-time only here (no next/image in the app), so bump them in place rather than jumping a major.",
+  "overrides": {
+    "postcss": "^8.5.26",
+    "sharp": "^0.35.3"
+  },
+  "dependencies": {
+    "next": "15.5.23",
+    "pg": "^8.13.1",
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.11.10",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "typescript": "^5.7.2"
+  }
+}

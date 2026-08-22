@@ -1,0 +1,467 @@
+:root {
+  --paper: #ffffff;
+  --ink: #14171a;
+  --ink-soft: #5b6472;
+  --ink-faint: #8b95a3;
+  --line: #dfe3e8;
+  --line-faint: #eef1f4;
+  --surface: #f7f8fa;
+
+  /* Validated for colourblind separation against white:
+     ΔE 29.9 protanopia · 36.6 normal vision · both > 3:1 contrast on white.
+     Reuse these rather than re-deriving them. */
+  --dot-them: #1d4ed8;
+  --dot-me: #c2410c;
+
+  --radius: 6px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  /* Nothing in this app is meant to scroll sideways. */
+  overflow-x: hidden;
+}
+
+.shell {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 20px 16px 64px;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+h1 {
+  font-size: 20px;
+}
+
+h2 {
+  font-size: 16px;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: inherit;
+}
+
+/* ---------- nav ---------- */
+
+.nav {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 18px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.wordmark {
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+
+.nav-links {
+  display: flex;
+  gap: 14px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nav-link {
+  color: var(--ink-soft);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.nav-link.is-current {
+  color: var(--ink);
+}
+
+.nav-link:hover {
+  color: var(--ink);
+}
+
+/* ---------- the plane ---------- */
+
+.plane {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0 20px;
+}
+
+.plane-label {
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.plane-label-y {
+  text-align: center;
+}
+
+.plane-x-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.plane-label-x {
+  max-width: 46%;
+}
+
+.plane-x-labels .plane-label-x:last-child {
+  text-align: right;
+}
+
+.plane-square {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background-color: var(--paper);
+  background-image:
+    repeating-linear-gradient(to right, var(--line-faint) 0 1px, transparent 1px 25%),
+    repeating-linear-gradient(to bottom, var(--line-faint) 0 1px, transparent 1px 25%);
+  /* A label under a dot at y = -1 would fall outside this box; the INSET_PX in
+     Plane.tsx keeps every dot far enough from the edge that it can't. */
+  overflow: hidden;
+}
+
+.plane-square.is-interactive {
+  cursor: crosshair;
+  /* Without this, dragging on a phone scrolls the page instead. */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.plane-square.is-muted .plane-dot,
+.plane-square.is-muted .plane-cluster {
+  filter: blur(6px);
+  opacity: 0.5;
+}
+
+.plane-axis {
+  position: absolute;
+  background: var(--line);
+}
+
+.plane-axis-x {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+}
+
+.plane-axis-y {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+}
+
+/* Dots are zero-size anchors so the mark and the label can each be placed
+   relative to the exact coordinate. */
+.plane-dot,
+.plane-marker {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+.plane-dot-mark {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  margin: -5.5px 0 0 -5.5px;
+  border-radius: 50%;
+  background: var(--dot-them);
+}
+
+.plane-dot-label {
+  position: absolute;
+  left: 0;
+  top: 8px;
+  transform: translateX(-50%);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  color: var(--dot-them);
+}
+
+.plane-dot.label-above .plane-dot-label {
+  top: auto;
+  bottom: 8px;
+}
+
+.plane-dot.is-me .plane-dot-mark {
+  background: var(--dot-me);
+}
+
+.plane-dot.is-me .plane-dot-label {
+  color: var(--dot-me);
+}
+
+/* The true extent of a tie, drawn once around the whole cluster. */
+.plane-cluster {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  border: 1px dashed var(--line);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.plane-marker-mark {
+  position: absolute;
+  width: 15px;
+  height: 15px;
+  margin: -7.5px 0 0 -7.5px;
+  border-radius: 50%;
+  border: 2px solid var(--dot-me);
+  background: rgba(194, 65, 12, 0.14);
+}
+
+.plane-marker .plane-dot-label {
+  color: var(--dot-me);
+  top: 11px;
+}
+
+/* ---------- forms ---------- */
+
+.field-label {
+  display: block;
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin-bottom: 6px;
+}
+
+.initials-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.initials-input {
+  flex: 0 1 128px;
+  min-width: 0;
+  font: inherit;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  text-align: center;
+  padding: 10px 4px 10px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.initials-input::placeholder {
+  color: var(--ink-faint);
+  font-weight: 400;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.input {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.button {
+  padding: 9px 14px;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.button.secondary {
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+.button.link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.hint {
+  color: var(--ink-faint);
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+.error {
+  color: #b42318;
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+.notice {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.meta {
+  color: var(--ink-faint);
+  font-size: 13px;
+}
+
+.section {
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+  margin-top: 22px;
+}
+
+/* ---------- tables and lists ---------- */
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.plot-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.plot-table th,
+.plot-table td {
+  text-align: left;
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--line-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.plot-table th {
+  color: var(--ink-faint);
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.plot-table tr.is-me td {
+  color: var(--dot-me);
+}
+
+.you-tag {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.card-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.card-title {
+  font-size: 14px;
+}
+
+.tag {
+  display: inline-block;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+}
+
+details > summary {
+  cursor: pointer;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+details[open] > summary {
+  margin-bottom: 10px;
+}
