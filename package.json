@@ -6,10 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "migrate": "node --env-file=.env.local scripts/sql.mjs --file supabase/migrations/0001_init.sql",
-    "sql": "node --env-file=.env.local scripts/sql.mjs"
+    "sql": "node --env-file=.env.local scripts/sql.mjs",
+    "test": "node tests/e2e.mjs"
   },
   "//overrides": "next 15.x pins vulnerable postcss/sharp transitively; both are build-time only here (no next/image in the app), so bump them in place rather than jumping a major.",
   "overrides": {
@@ -23,10 +24,13 @@
     "react-dom": "19.1.0"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.6",
     "@types/node": "^22.10.2",
     "@types/pg": "^8.11.10",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^15.5.23",
     "typescript": "^5.7.2"
   }
 }

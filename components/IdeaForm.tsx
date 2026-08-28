@@ -16,10 +16,22 @@ export default function IdeaForm() {
     event.preventDefault();
     if (!complete) return;
     setError(null);
+    const sent = form;
     startTransition(async () => {
-      const result = await submitIdea(form);
-      if (result.error) setError(result.error);
-      else setForm(EMPTY);
+      const result = await submitIdea(sent);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      // Clear only what was actually sent. The action plus its revalidation can
+      // take a second or two on a phone, and the fields stay editable the whole
+      // time — so an unconditional reset here wipes the next idea out from
+      // under someone who started typing while this one was still in flight.
+      setForm((current) =>
+        (Object.keys(EMPTY) as (keyof typeof EMPTY)[]).every((key) => current[key] === sent[key])
+          ? EMPTY
+          : current,
+      );
     });
   }
 

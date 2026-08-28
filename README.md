@@ -23,7 +23,7 @@ connection on 5432 exhausts connections on serverless.
 ```bash
 npm install
 cp .env.example .env.local     # fill in the three values
-psql "$DATABASE_URL" -f supabase/migrations/0001_init.sql
+npm run migrate                # or: psql "$DATABASE_URL" -f supabase/migrations/0001_init.sql
 npm run dev
 ```
 
@@ -34,6 +34,27 @@ Env vars:
 | `DATABASE_URL` | Postgres connection string |
 | `ADMIN_PASSWORD` | The single operator password for `/admin` |
 | `ADMIN_SESSION_SECRET` | `openssl rand -hex 32` |
+
+## Tests
+
+```bash
+npm run typecheck && npm run lint
+npm run build && npm start                       # against a scratch database
+npm i --no-save playwright-core                  # not a project dependency
+BASE=http://localhost:3000 ADMIN_PASSWORD=... npm test
+```
+
+`tests/e2e.mjs` drives the built app in a browser against a real Postgres. There
+is no unit layer on purpose: nearly everything here is a Server Component reading
+Postgres, a Server Function writing it, or a drag landing on a pixel, and a mock
+of any of those tests the mock. It covers the reveal gate (including that a
+locked board's coordinates are absent from the raw response, not just hidden), a
+drag round-tripping through the database, a three-way tie at 390px, keyboard-only
+placement, admin authorisation by replaying a captured action without the cookie,
+and the empty states.
+
+Run it against a throwaway database — it writes grids, players and ideas, and
+takes the live grid down at the end.
 
 ## Shape
 
@@ -74,7 +95,7 @@ action rather than in a page or a proxy: Server Functions POST to the route of t
 page they're used on, so nothing outside them covers them. The `isAdmin()` call in
 `app/admin/page.tsx` only decides what to render.
 
-## Three things that are easy to get wrong
+## Five things that are easy to get wrong
 
 **The reveal gate is server-side.** If the client filtered the dots they would be
 one devtools tab away. `boardFor()` in `lib/queries.ts` doesn't *select* the
@@ -92,6 +113,18 @@ on a ring, with the upper half of the ring labelling upward.
 dot at y = -1 would be clipped. The inset is in pixels, not percent — the label's
 size doesn't scale with the square — and `fromPixels` is the exact inverse of
 `toOffset`.
+
+**The square is not pointer-only.** It takes focus and answers the arrow keys,
+because the marker starts at centre and a keyboard user with no other way to move
+it could only ever commit to dead centre. `role="application"` is only honest
+because `handleKey` really consumes those keys. The position also renders as a
+sentence under the square — the one piece of feedback that serves a screen reader
+and a sighted user with the same element.
+
+**A form that clears itself has to clear only what it sent.** A Server Action plus
+its revalidation can outlast the moment someone starts typing the next entry, and
+the fields stay editable throughout. `IdeaForm` and `NewGridForm` therefore reset
+through a functional update that no-ops if anything changed since the submit.
 
 Coordinates are stored normalised `-1…1` with **+y up**; the DOM's y grows
 downward, so it's negated on render.

@@ -1,0 +1,607 @@
+/**
+ * End-to-end pass over the whole app against a real Postgres and a real browser.
+ *
+ * There is no unit-test layer on purpose: almost every interesting behaviour here
+ * is a Server Component reading Postgres, a Server Function writing it, or a drag
+ * landing on a pixel. Mocking any of those would test the mock. So this drives
+ * the built app the way a person does.
+ *
+ *   npm run build && npm start   (with DATABASE_URL pointing at a scratch DB)
+ *   BASE=http://localhost:3000 ADMIN_PASSWORD=... node tests/e2e.mjs
+ *
+ * Needs playwright-core and a Chromium; neither is a project dependency:
+ *   npm i --no-save playwright-core && npx playwright install chromium
+ * Point CHROME at the binary if playwright can't find one itself.
+ */
+import { chromium } from "playwright-core";
+
+const BASE = process.env.BASE ?? "http://127.0.0.1:3000";
+const PASSWORD = process.env.ADMIN_PASSWORD;
+if (!PASSWORD) {
+  console.error("ADMIN_PASSWORD is not set");
+  process.exit(1);
+}
+
+let failures = 0;
+let checks = 0;
+const group = (name) => console.log(`\n── ${name}`);
+
+function ok(condition, label, detail) {
+  checks += 1;
+  if (condition) {
+    console.log(`  ✓ ${label}`);
+  } else {
+    failures += 1;
+    console.log(`  ✗ ${label}${detail ? `\n      ${detail}` : ""}`);
+  }
+}
+
+const browser = await chromium.launch({ executablePath: process.env.CHROME });
+
+/** A fresh browser context is a fresh person: no cookie, so no player row. */
+async function person(width = 900) {
+  const ctx = await browser.newContext({ viewport: { width, height: 1000 } });
+  const page = await ctx.newPage();
+  page.on("pageerror", (err) => {
+    failures += 1;
+    console.log(`  ✗ uncaught page error: ${err.message}`);
+  });
+  return { ctx, page };
+}
+
+const settle = (page) => page.waitForLoadState("networkidle");
+
+/**
+ * Wait until React has actually attached. Typing into a controlled input before
+ * hydration puts the characters in the DOM where React never sees them, so the
+ * form stays "empty" and its submit button stays disabled — which looks exactly
+ * like a product bug and isn't one.
+ */
+const hydrated = (page, selector = "form") =>
+  page.waitForFunction(
+    (sel) => {
+      const el = document.querySelector(sel);
+      return !!el && Object.keys(el).some((k) => k.startsWith("__react"));
+    },
+    selector,
+    { timeout: 15_000 },
+  );
+
+async function setInitials(page, initials) {
+  await page.goto(`${BASE}/`);
+  await hydrated(page, "form.initials-form");
+  await page.fill("#initials", initials);
+  await page.click("form.initials-form button[type=submit]");
+  await page.waitForSelector(".plane-square", { timeout: 10_000 });
+}
+
+/** Drag the marker to a normalised -1…1 point and commit it. */
+async function placeAt(page, x, y) {
+  const box = await page.locator(".plane-square").boundingBox();
+  const INSET = 24;
+  const px = box.x + INSET + ((x + 1) / 2) * (box.width - INSET * 2);
+  const py = box.y + INSET + ((-y + 1) / 2) * (box.height - INSET * 2);
+  await page.mouse.move(px, py);
+  await page.mouse.down();
+  await page.mouse.move(px, py);
+  await page.mouse.up();
+  await page.getByRole("button", { name: /Place me here|Move my dot here/ }).click();
+  await settle(page);
+  return { px, py };
+}
+
+// ───────────────────────────────────────────────────────────── empty state
+group("No grid is up");
+{
+  const { ctx, page } = await person();
+  await page.goto(`${BASE}/`);
+  ok(await page.getByText("Nothing up yet").isVisible(), "home explains there is no grid");
+  await page.goto(`${BASE}/archive`);
+  ok(await page.getByText("Nothing has been archived yet").isVisible(), "archive has an empty state");
+  await ctx.close();
+}
+
+// ───────────────────────────────────────────────────────────────── admin
+group("Admin");
+const admin = await person();
+{
+  await admin.page.goto(`${BASE}/admin`);
+  await hydrated(admin.page, "form.stack");
+  await admin.page.fill("#password", "definitely-not-the-password");
+  await admin.page.click("button[type=submit]");
+  await admin.page.waitForSelector(".error");
+  ok(
+    (await admin.page.locator(".error").textContent())?.includes("Wrong password"),
+    "a wrong password is refused",
+  );
+
+  await admin.page.fill("#password", PASSWORD);
+  await admin.page.click("button[type=submit]");
+  await admin.page.waitForSelector("text=Live grid", { timeout: 10_000 });
+  ok(true, "the right password signs in");
+
+  await hydrated(admin.page, "form.stack");
+  const forms = admin.page.locator("form.stack");
+  const newGrid = forms.last();
+  await newGrid.locator("input").nth(0).fill("Test week");
+  await newGrid.locator("input").nth(1).fill("chill");
+  await newGrid.locator("input").nth(2).fill("not chill");
+  await newGrid.locator("input").nth(3).fill("low maintenance");
+  await newGrid.locator("input").nth(4).fill("high maintenance");
+  await newGrid.getByRole("button", { name: "Put it up" }).click();
+  await admin.page.waitForSelector(".card-title:has-text('Test week')", { timeout: 10_000 });
+  ok(true, "a typed grid goes live");
+}
+
+// ───────────────────────────────────────────────── the reveal gate
+group("The reveal gate");
+const alice = await person();
+{
+  await alice.page.goto(`${BASE}/`);
+  ok(await alice.page.locator("#initials").isVisible(), "a new visitor is asked for initials");
+
+  await setInitials(alice.page, "AAA");
+  ok(await alice.page.locator(".plane-square").isVisible(), "the square renders once initials are set");
+  ok(
+    (await alice.page.locator(".plane-dot").count()) === 0,
+    "no dots are drawn before you commit",
+  );
+  ok(
+    (await alice.page.getByText("hidden until you commit").count()) > 0,
+    "the locked state says why the board is empty",
+  );
+}
+
+// Bob commits first, so there is something for Alice to be locked out of.
+const bob = await person();
+{
+  await setInitials(bob.page, "BBB");
+  await placeAt(bob.page, 0.5, 0.5);
+  ok((await bob.page.locator(".plane-dot").count()) === 1, "committing reveals your own dot");
+}
+
+{
+  // The gate is the point: Bob's coordinates must not be in the bytes Alice gets.
+  await alice.page.reload();
+  const html = await alice.page.content();
+  ok(!html.includes("BBB"), "another player's initials are not in the locked payload");
+  const res = await alice.ctx.request.get(`${BASE}/`);
+  const raw = await res.text();
+  ok(!raw.includes("BBB"), "…nor in the raw server response");
+  ok(
+    (await alice.page.getByText(/1 person is already on the board/).count()) > 0,
+    "the locked board still reports the headcount",
+  );
+}
+
+// ─────────────────────────────────────────────────── placing and moving
+group("Placing and moving");
+{
+  await placeAt(alice.page, -0.5, -0.5);
+  await alice.page.reload();
+  ok((await alice.page.locator(".plane-dot").count()) === 2, "both dots appear once you commit");
+  ok((await alice.page.locator(".plane-dot.is-me").count()) === 1, "exactly one dot is marked yours");
+
+  await alice.page.getByRole("button", { name: "show as list" }).click();
+  const row = alice.page.locator("tr.is-me");
+  const x = Number(await row.locator("td").nth(1).textContent());
+  const y = Number(await row.locator("td").nth(2).textContent());
+  ok(
+    Math.abs(x - -0.5) <= 0.02 && Math.abs(y - -0.5) <= 0.02,
+    "a drag round-trips through the database within 0.02",
+    `got ${x}, ${y}`,
+  );
+
+  await alice.page.getByRole("button", { name: "Move my dot" }).click();
+  // Your committed dot must give way to the marker while you aim: two orange
+  // marks and two labels stacked on one coordinate is unreadable.
+  ok(
+    (await alice.page.locator(".plane-dot.is-me").count()) === 0 &&
+      (await alice.page.locator(".plane-marker").count()) === 1,
+    "moving replaces your dot with the marker rather than drawing both",
+  );
+  await placeAt(alice.page, 0.9, -0.9);
+  await alice.page.reload();
+  await alice.page.getByRole("button", { name: "show as list" }).click();
+  const moved = alice.page.locator("tr.is-me");
+  ok(
+    Math.abs(Number(await moved.locator("td").nth(1).textContent()) - 0.9) <= 0.02,
+    "moving replaces the dot rather than adding one",
+  );
+  ok(
+    (await alice.page.locator(".plane-dot").count()) === 2,
+    "…and the board still has two dots, not three",
+  );
+}
+
+// ─────────────────────────────────────────── a tie, at a phone width
+group("A three-way tie at 390px");
+const tie = [];
+{
+  for (const initials of ["CCC", "DDD", "EEE"]) {
+    const p = await person(390);
+    await setInitials(p.page, initials);
+    await placeAt(p.page, 0.2, 0.2);
+    tie.push(p);
+  }
+  const page = tie[2].page;
+  await page.reload();
+  await settle(page);
+
+  ok((await page.locator(".plane-dot").count()) === 5, "every dot is drawn");
+  ok((await page.locator(".plane-cluster").count()) === 1, "the tie gets one cluster ring");
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  ok(overflow === 0, "the page does not scroll sideways at 390px", `overflow ${overflow}px`);
+
+  const clipped = await page.evaluate(() => {
+    const square = document.querySelector(".plane-square");
+    const box = square.getBoundingClientRect();
+    return [...document.querySelectorAll(".plane-dot-label")]
+      .filter((el) => {
+        const r = el.getBoundingClientRect();
+        return (
+          r.left < box.left - 0.5 || r.right > box.right + 0.5 ||
+          r.top < box.top - 0.5 || r.bottom > box.bottom + 0.5
+        );
+      })
+      .map((el) => el.textContent);
+  });
+  ok(clipped.length === 0, "no dot label is clipped by the square", clipped.join(", "));
+
+  const overlapping = await page.evaluate(() => {
+    const marks = [...document.querySelectorAll(".plane-dot-mark")].map((el) =>
+      el.getBoundingClientRect(),
+    );
+    const hits = [];
+    for (let i = 0; i < marks.length; i += 1) {
+      for (let j = i + 1; j < marks.length; j += 1) {
+        const a = marks[i], b = marks[j];
+        const dx = a.x + a.width / 2 - (b.x + b.width / 2);
+        const dy = a.y + a.height / 2 - (b.y + b.height / 2);
+        if (Math.hypot(dx, dy) < (a.width + b.width) / 2) hits.push([i, j]);
+      }
+    }
+    return hits;
+  });
+  ok(overlapping.length === 0, "tied dots are fanned out, not stacked", JSON.stringify(overlapping));
+
+  const small = await page.evaluate(() =>
+    [...document.querySelectorAll(".button")]
+      .map((el) => ({ label: el.textContent.trim(), h: Math.round(el.getBoundingClientRect().height) }))
+      .filter((b) => b.h < 44),
+  );
+  ok(small.length === 0, "every button clears a 44px tap target", JSON.stringify(small));
+}
+
+// ─────────────────────────────────────────────── keyboard and contrast
+group("Reachable without a pointer");
+{
+  // The square is the entire app. Pointer-only would mean a keyboard user can
+  // only ever commit to dead centre, because that is where the marker starts.
+  const { ctx, page } = await person();
+  await setInitials(page, "KBD");
+
+  const focused = await page.evaluate(() => {
+    const sq = document.querySelector(".plane-square");
+    sq.focus();
+    return document.activeElement === sq;
+  });
+  ok(focused, "the square can take focus");
+
+  const readingOf = () => page.locator(".plane-readout").textContent();
+  ok((await readingOf())?.trim() === "dead centre", "the marker starts at centre, and says so");
+
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowUp");
+  const nudged = await readingOf();
+  ok(
+    nudged !== null && nudged.trim() !== "dead centre",
+    "arrow keys move the marker",
+    `readout: ${nudged}`,
+  );
+
+  await page.keyboard.down("Shift");
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.up("Shift");
+  ok((await readingOf()) !== nudged, "shift+arrow takes a bigger step");
+
+  // …and the whole thing round-trips: commit by keyboard, read it back.
+  await page.getByRole("button", { name: "Place me here" }).click();
+  await settle(page);
+  await page.getByRole("button", { name: "show as list" }).click();
+  const row = page.locator("tr.is-me");
+  const x = Number(await row.locator("td").nth(1).textContent());
+  const y = Number(await row.locator("td").nth(2).textContent());
+  ok(x > 0 && y > 0, "a dot placed entirely by keyboard saves", `got ${x}, ${y}`);
+
+  // :focus-visible only matches real keyboard focus, so tab to it rather than
+  // calling .focus() — a scripted focus would report no ring and look like a bug.
+  let ring = { on: "nothing", width: "0px", style: "none" };
+  for (let i = 0; i < 12; i += 1) {
+    await page.keyboard.press("Tab");
+    const at = await page.evaluate(() => {
+      const el = document.activeElement;
+      const s = getComputedStyle(el);
+      return {
+        on: el.className || el.tagName.toLowerCase(),
+        isButton: el.classList.contains("button"),
+        width: s.outlineWidth,
+        style: s.outlineStyle,
+      };
+    });
+    if (at.isButton) { ring = at; break; }
+  }
+  ok(
+    ring.style !== "none" && parseFloat(ring.width) >= 2,
+    "keyboard focus draws a visible ring",
+    JSON.stringify(ring),
+  );
+
+  await ctx.close();
+}
+
+group("Dark mode");
+{
+  const ctx = await browser.newContext({ colorScheme: "dark", viewport: { width: 390, height: 900 } });
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}/`);
+  const paint = await page.evaluate(() => {
+    const body = getComputedStyle(document.body);
+    return { bg: body.backgroundColor, fg: body.color };
+  });
+  const rgb = (v) => v.match(/\d+/g).map(Number);
+  const luma = (v) => {
+    const [r, g, b] = rgb(v);
+    return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  };
+  ok(luma(paint.bg) < 0.25, "the page is dark when the system is", JSON.stringify(paint));
+  ok(luma(paint.fg) > 0.6, "…and the text inverts with it", JSON.stringify(paint));
+  ok(
+    (await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).includes("dark"),
+    "color-scheme is declared, so form controls follow too",
+  );
+  await ctx.close();
+}
+
+// ────────────────────────────────────────────────────────────── ideas
+group("Ideas");
+{
+  const page = alice.page;
+  await page.goto(`${BASE}/ideas`);
+  await hydrated(page, "form.stack");
+  ok((await page.getByText("You haven't sent any yet").count()) > 0, "ideas has an empty state");
+
+  const inputs = page.locator("form.stack .input");
+  await inputs.nth(0).fill("indoors");
+  await inputs.nth(1).fill("outdoors");
+  await inputs.nth(2).fill("cheap");
+  await inputs.nth(3).fill("expensive");
+  await page.getByRole("button", { name: "Submit idea" }).click();
+  await settle(page);
+  await page.reload();
+  await hydrated(page, "form.stack");
+  ok((await page.locator(".card-list .card").count()) === 1, "a submitted idea shows up under Yours");
+  ok(
+    (await page.locator(".tag").first().textContent())?.trim() === "pending",
+    "a new idea is pending",
+  );
+
+}
+
+group("The pending-idea cap");
+{
+  // Its own person: the cap is per player, so sharing one with another group
+  // would make this assertion depend on what that group happened to submit.
+  const { ctx, page } = await person();
+  await setInitials(page, "CAP");
+  await page.goto(`${BASE}/ideas`);
+  await hydrated(page, "form.stack");
+  const inputs = page.locator("form.stack .input");
+  const submit = page.getByRole("button", { name: /Submit idea|Sending/ });
+
+  for (const n of [1, 2, 3, 4, 5]) {
+    for (const [i, v] of [[0, `l${n}`], [1, `r${n}`], [2, `b${n}`], [3, `t${n}`]]) {
+      await inputs.nth(i).fill(v);
+    }
+    await submit.click();
+    await settle(page);
+    await page.waitForFunction(
+      (want) => document.querySelectorAll(".card-list .card").length === want,
+      n,
+      { timeout: 15_000 },
+    );
+  }
+  ok((await page.locator(".card-list .card").count()) === 5, "five ideas can be queued");
+
+  for (const [i, v] of [[0, "l6"], [1, "r6"], [2, "b6"], [3, "t6"]]) await inputs.nth(i).fill(v);
+  await submit.click();
+  await page.waitForSelector(".error", { timeout: 15_000 });
+  ok(
+    (await page.locator(".error").textContent())?.includes("5 ideas waiting"),
+    "the sixth pending idea is refused with a readable reason",
+    await page.locator(".error").textContent(),
+  );
+  ok(
+    (await page.locator(".card-list .card").count()) === 5,
+    "…and it is not silently stored anyway",
+  );
+  await ctx.close();
+}
+
+group("Typing while a submit is still in flight");
+{
+  // The form clears itself on success, and the action plus its revalidation can
+  // outlast the moment someone starts typing the next one. Clearing whatever
+  // happens to be in the fields at that point eats their input.
+  const { ctx, page } = await person();
+  await setInitials(page, "RCE");
+  await page.goto(`${BASE}/ideas`);
+  await hydrated(page, "form.stack");
+  const inputs = page.locator("form.stack .input");
+  const submit = page.getByRole("button", { name: /Submit idea|Sending/ });
+
+  for (const [i, v] of [[0, "a"], [1, "b"], [2, "c"], [3, "d"]]) await inputs.nth(i).fill(v);
+  await submit.click();
+  // Don't wait for it: start typing the next idea straight away, exactly as a
+  // person would.
+  for (const [i, v] of [[0, "next"], [1, "one"], [2, "still"], [3, "here"]]) {
+    await inputs.nth(i).fill(v);
+  }
+  await settle(page);
+  const kept = await inputs.evaluateAll((els) => els.map((el) => el.value));
+  ok(
+    kept.join("|") === "next|one|still|here",
+    "the reset does not wipe what was typed while the submit was in flight",
+    JSON.stringify(kept),
+  );
+  ok(!(await submit.isDisabled()), "…and the form is still submittable");
+  await ctx.close();
+}
+
+// ─────────────────────────────────────────── promote, archive, revisit
+group("Promote an idea, archive the old grid");
+{
+  // How many dots the live grid actually ended up with — every group above adds
+  // its own people, so this is read, not assumed.
+  await alice.page.goto(`${BASE}/`);
+  const placedThisGrid = await alice.page.locator(".plane-dot").count();
+
+  await admin.page.goto(`${BASE}/admin`);
+  await hydrated(admin.page, "form.stack");
+  const queued = await admin.page
+    .locator(".card-list .card .card-title")
+    .first()
+    .textContent();
+  await admin.page.getByRole("button", { name: "Put it up" }).first().click();
+  await settle(admin.page);
+  const live = await admin.page
+    .locator("h2:has-text('Live grid') + * .meta, .card .meta")
+    .first()
+    .textContent();
+  ok(
+    live?.includes(queued.split("↔")[0].trim()),
+    "a queued idea can be promoted to the live grid",
+    `queued ${queued} · live ${live}`,
+  );
+
+  await alice.page.goto(`${BASE}/archive`);
+  const cards = alice.page.locator(".card-list .card");
+  ok((await cards.count()) === 1, "the old grid moved to the archive");
+  const card = await cards.first().textContent();
+  const claimed = Number(card.match(/(\d+) dots?/)?.[1]);
+  ok(claimed === placedThisGrid, "the archive card counts its dots", card);
+
+  await cards.first().locator("a").click();
+  await alice.page.waitForSelector(".plane-square");
+  ok(
+    (await alice.page.locator(".plane-dot").count()) === placedThisGrid,
+    "an archived board is readable in full",
+  );
+
+  // An archived board is open reading, so a stranger sees it too.
+  const stranger = await person();
+  await stranger.page.goto(alice.page.url());
+  ok(
+    (await stranger.page.locator(".plane-dot").count()) === placedThisGrid,
+    "…including to someone who never plotted",
+  );
+  ok(
+    (await stranger.page.locator(".plane-dot.is-me").count()) === 0,
+    "…with no dot marked as theirs",
+  );
+  await stranger.ctx.close();
+
+  // The new grid is a fresh board: Alice has no dot on it, so she is locked out.
+  await alice.page.goto(`${BASE}/`);
+  ok(
+    (await alice.page.locator(".plane-dot").count()) === 0,
+    "a new grid locks everyone out again",
+  );
+  ok(
+    (await alice.page.getByText("hidden until you commit").count()) > 0,
+    "…and says so",
+  );
+}
+
+// ──────────────────────────────────────────────────────── bad input
+group("Bad input and bad URLs");
+{
+  const { ctx, page } = await person();
+  const notFound = await ctx.request.get(`${BASE}/archive/not-a-uuid`);
+  ok(notFound.status() === 404, "a non-uuid archive id 404s", `got ${notFound.status()}`);
+  const missing = await ctx.request.get(`${BASE}/archive/00000000-0000-4000-8000-000000000000`);
+  ok(missing.status() === 404, "an unknown archive id 404s", `got ${missing.status()}`);
+
+  await page.goto(`${BASE}/`);
+  await hydrated(page, "form.initials-form");
+  await page.fill("#initials", "ab");
+  ok(
+    await page.locator("form.initials-form button[type=submit]").isDisabled(),
+    "two characters can't be submitted",
+  );
+  // pressSequentially, not fill(): maxLength=3 truncates a whole-string fill
+  // before React's onChange ever sees the characters it would have stripped.
+  await page.fill("#initials", "");
+  await page.locator("#initials").pressSequentially("a-b!c@d");
+  ok(
+    (await page.inputValue("#initials")) === "ABC",
+    "the field upper-cases and strips punctuation as you type",
+    await page.inputValue("#initials"),
+  );
+  await ctx.close();
+}
+
+// ──────────────────────────────────────────────────── admin authorisation
+group("Admin authorisation");
+{
+  // Every admin action re-checks for itself, because a Server Function POSTs to
+  // the page's own route and no page-level guard covers it. Prove it: replay a
+  // signed-in admin's action request from a context with no admin cookie.
+  const { ctx, page } = await person();
+  await page.goto(`${BASE}/admin`);
+  await hydrated(page, "form.stack");
+  ok(await page.locator("#password").isVisible(), "a signed-out visitor only sees the login");
+
+  let action = null;
+  admin.page.on("request", (req) => {
+    if (req.method() === "POST" && req.headers()["next-action"]) action = req;
+  });
+  await admin.page.goto(`${BASE}/admin`);
+  await hydrated(admin.page, "form.stack");
+  await admin.page.getByRole("button", { name: "Take it down" }).click();
+  await settle(admin.page);
+  ok(action !== null, "captured a real admin action request to replay");
+
+  if (action) {
+    const replay = await ctx.request.post(action.url(), {
+      headers: {
+        "next-action": action.headers()["next-action"],
+        "content-type": action.headers()["content-type"] ?? "text/plain;charset=UTF-8",
+      },
+      data: action.postData() ?? "[]",
+    });
+    const body = await replay.text();
+    ok(
+      !replay.ok() || body.includes("error") || body.includes("Not authorised"),
+      "the same action replayed without the admin cookie does not succeed",
+      `status ${replay.status()}`,
+    );
+    // And prove it by effect, not just by response: nothing may be live now.
+    await page.goto(`${BASE}/`);
+    ok(
+      (await page.getByText("Nothing up yet").count()) > 0,
+      "…the grid the admin took down stayed down",
+    );
+  }
+  await ctx.close();
+}
+
+for (const p of [alice, bob, admin, ...tie]) await p.ctx.close();
+await browser.close();
+
+console.log(`\n${checks - failures}/${checks} checks passed`);
+process.exit(failures === 0 ? 0 : 1);

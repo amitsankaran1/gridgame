@@ -1,8 +1,13 @@
 :root {
+  color-scheme: light dark;
+
   --paper: #ffffff;
   --ink: #14171a;
   --ink-soft: #5b6472;
-  --ink-faint: #8b95a3;
+  /* 5.0:1 on --paper, 4.7:1 on --surface. The old #8b95a3 was 3.0:1, which
+     fails AA — and .meta is not decoration here: the headcount, the dot totals
+     and the archive dates all live in it. */
+  --ink-faint: #667081;
   --line: #dfe3e8;
   --line-faint: #eef1f4;
   --surface: #f7f8fa;
@@ -12,8 +17,38 @@
      Reuse these rather than re-deriving them. */
   --dot-them: #1d4ed8;
   --dot-me: #c2410c;
+  /* The marker's fill. Kept as its own token because it is the one place a dot
+     colour is used at low alpha, and a hardcoded rgba() would stay orange-on-
+     white in dark mode. */
+  --dot-me-wash: rgba(194, 65, 12, 0.14);
+  --danger: #b42318;
+
+  --focus: #1d4ed8;
 
   --radius: 6px;
+}
+
+/* This is a phone app people open in bed. A hard white page at night is the
+   single loudest thing it could do. Only the tokens change — every rule below
+   is written against them, so nothing else needs a dark variant. The dot pair
+   is re-derived rather than reused: #1d4ed8 on a dark ground is nearly black. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #101316;
+    --ink: #e9ecf0;
+    --ink-soft: #aab3bf;
+    --ink-faint: #98a1ae;
+    --line: #2c333c;
+    --line-faint: #1d222a;
+    --surface: #181c22;
+
+    --dot-them: #7aa7ff;
+    --dot-me: #ff9a5a;
+    --dot-me-wash: rgba(255, 154, 90, 0.18);
+    --danger: #ff8f85;
+
+    --focus: #7aa7ff;
+  }
 }
 
 * {
@@ -163,10 +198,16 @@ a {
   -webkit-user-select: none;
 }
 
-.plane-square.is-muted .plane-dot,
-.plane-square.is-muted .plane-cluster {
-  filter: blur(6px);
-  opacity: 0.5;
+.plane-square.is-interactive:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Where the marker is, in words — under the square, for everyone. */
+.plane-readout {
+  color: var(--ink-soft);
+  font-size: 13px;
+  min-height: 1.5em;
 }
 
 .plane-axis {
@@ -247,7 +288,7 @@ a {
   margin: -7.5px 0 0 -7.5px;
   border-radius: 50%;
   border: 2px solid var(--dot-me);
-  background: rgba(194, 65, 12, 0.14);
+  background: var(--dot-me-wash);
 }
 
 .plane-marker .plane-dot-label {
@@ -299,6 +340,10 @@ textarea {
 
 .input {
   width: 100%;
+  /* Safari on iOS zooms the page in on any input below 16px, which throws the
+     layout sideways the moment someone taps a field. */
+  font-size: 16px;
+  min-height: 44px;
   padding: 9px 11px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -307,7 +352,10 @@ textarea {
 }
 
 .button {
-  padding: 9px 14px;
+  /* 44px is the smallest comfortable touch target on a phone; the old 36px was
+     under it. min-height rather than more padding, so the label stays put. */
+  min-height: 44px;
+  padding: 9px 16px;
   border: 1px solid var(--ink);
   border-radius: var(--radius);
   background: var(--ink);
@@ -322,6 +370,13 @@ textarea {
   cursor: default;
 }
 
+/* The default ring is drawn in near-black, which is invisible on .button — its
+   background is near-black too. One explicit rule for everything focusable. */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 .button.secondary {
   background: var(--paper);
   color: var(--ink);
@@ -331,7 +386,9 @@ textarea {
 .button.link {
   background: none;
   border: none;
-  padding: 0;
+  /* Still a tap target, but the underline stays tight to the text. */
+  min-height: 44px;
+  padding: 0 2px;
   color: var(--ink-soft);
   font-size: 13px;
   text-decoration: underline;
@@ -351,7 +408,7 @@ textarea {
 }
 
 .error {
-  color: #b42318;
+  color: var(--danger);
   font-size: 13px;
   margin-top: 8px;
 }

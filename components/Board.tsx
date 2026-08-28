@@ -55,7 +55,10 @@ export default function Board({
 
       <Plane
         grid={grid}
-        plots={committed ? plots : undefined}
+        // While you are moving, the marker IS your dot — drawing the committed
+        // one as well puts two orange marks and two labels on top of each other,
+        // which is unreadable exactly when you most need to aim.
+        plots={committed ? (moving ? plots.filter((plot) => !plot.isMe) : plots) : undefined}
         marker={interactive ? marker : null}
         onMarkerChange={interactive ? setMarker : undefined}
       />
@@ -65,7 +68,7 @@ export default function Board({
           <button className="button" onClick={commit} disabled={pending}>
             {pending ? "Saving…" : committed ? "Move my dot here" : "Place me here"}
           </button>
-          {committed ? (
+          {committed && (
             <button
               className="button link"
               onClick={() => {
@@ -75,8 +78,6 @@ export default function Board({
             >
               cancel
             </button>
-          ) : (
-            <span className="meta">Drag anywhere on the square, then place yourself.</span>
           )}
         </div>
       ) : (
