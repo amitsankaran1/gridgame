@@ -38,12 +38,18 @@ Reasons included so these don't get re-litigated.
 
 ## Not yet done
 
-Everything here needs a live database, which doesn't exist yet.
+- [ ] Provision Postgres and run `supabase/migrations/0001_init.sql`. The app and
+      its tests have only ever run against a local Postgres, so the Supabase
+      transaction-pooler URI is the one part of the setup nothing has exercised.
+- [ ] Deploy to Vercel with the three env vars set.
 
-- [ ] Provision Postgres and run `supabase/migrations/0001_init.sql`.
-- [ ] Screenshot at 390px wide with a deliberate 3-way tie, and look at it. Both
+### Done
+
+- [x] Screenshot at 390px wide with a deliberate 3-way tie, and look at it. Both
       real bugs in the first build — an unreadable cluster and a clipped corner
-      label — were invisible until rendered.
-- [ ] Confirm a drag lands within ~1px of the pointer, round-tripped through the
-      database.
-- [ ] First push to `main`. The repo is still empty.
+      label — were invisible until rendered. The tie now also has a regression
+      test: `tests/e2e.mjs` asserts no label escapes the square, no two marks
+      overlap, and the page never scrolls sideways.
+- [x] Confirm a drag lands within ~1px of the pointer, round-tripped through the
+      database. Asserted to within 0.02 of the plane's -1…1 range.
+- [x] End-to-end tests. See the Tests section of the README.

@@ -14,6 +14,23 @@ const INSET_PX = 24;
 /** Two dots closer than this share a ring instead of overlapping. */
 const COLLISION_DISTANCE = 0.17;
 
+/**
+ * Arrow-key steps. The square is the whole point of the app, so it cannot be
+ * pointer-only: without these, a keyboard user can only ever commit to dead
+ * centre, because that is where the marker starts and nothing else can move it.
+ * 0.05 gives 40 stops across the plane — fine enough to mean something, coarse
+ * enough to cross the square without holding a key down. Shift is the shortcut.
+ */
+const STEP = 0.05;
+const COARSE_STEP = 0.25;
+
+/** A coordinate as a person can read — or hear — it. */
+function describe(value: number, low: string, high: string): string {
+  const percent = Math.round(Math.abs(value) * 100);
+  if (percent < 5) return "centre";
+  return `${percent}% toward ${value > 0 ? high : low}`;
+}
+
 /** -1…1 to a CSS offset inside the square. */
 const toOffset = (n: number) =>
   `calc(${INSET_PX}px + ${(n + 1) / 2} * (100% - ${INSET_PX * 2}px))`;
@@ -109,11 +126,9 @@ type Props = {
   /** Your own position, shown as the draggable marker. */
   marker?: { x: number; y: number } | null;
   onMarkerChange?: (point: { x: number; y: number }) => void;
-  /** Blur and dim the plotting area — used behind the locked state. */
-  muted?: boolean;
 };
 
-export default function Plane({ grid, plots, marker, onMarkerChange, muted }: Props) {
+export default function Plane({ grid, plots, marker, onMarkerChange }: Props) {
   const squareRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
   const interactive = typeof onMarkerChange === "function";
@@ -138,6 +153,40 @@ export default function Plane({ grid, plots, marker, onMarkerChange, muted }: Pr
     [onMarkerChange, pointToValue],
   );
 
+  const handleKey = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (!onMarkerChange || !marker) return;
+      const step = event.shiftKey ? COARSE_STEP : STEP;
+      // Up increases y: the plane's y grows upward even though the DOM's doesn't.
+      const moves: Record<string, [number, number]> = {
+        ArrowLeft: [-step, 0],
+        ArrowRight: [step, 0],
+        ArrowUp: [0, step],
+        ArrowDown: [0, -step],
+      };
+      const move = moves[event.key];
+      if (move) {
+        event.preventDefault();
+        onMarkerChange({ x: clamp(marker.x + move[0]), y: clamp(marker.y + move[1]) });
+        return;
+      }
+      if (event.key === "Home") {
+        event.preventDefault();
+        onMarkerChange({ x: 0, y: 0 });
+      }
+    },
+    [marker, onMarkerChange],
+  );
+
+  const readout = (() => {
+    if (!marker) return null;
+    const x = describe(marker.x, grid.x_left, grid.x_right);
+    const y = describe(marker.y, grid.y_bottom, grid.y_top);
+    // "centre · centre" is where every marker starts, so it is the line most
+    // people read first. Say it once, properly.
+    return x === "centre" && y === "centre" ? "dead centre" : `${x} · ${y}`;
+  })();
+
   const { dots, rings } = plots ? place(plots) : { dots: [], rings: [] };
 
   return (
@@ -146,11 +195,19 @@ export default function Plane({ grid, plots, marker, onMarkerChange, muted }: Pr
 
       <div
           ref={squareRef}
-          className={`plane-square${muted ? " is-muted" : ""}${interactive ? " is-interactive" : ""}`}
+          className={`plane-square${interactive ? " is-interactive" : ""}`}
           // `touch-action: none` lives on this class so a drag doesn't scroll
           // the page underneath it.
+          //
+          // role="application" tells a screen reader to stop swallowing arrow
+          // keys and hand them over. That is only honest because handleKey
+          // actually uses them — the role without the handler would announce an
+          // interactive control that then does nothing.
           role={interactive ? "application" : undefined}
-          aria-label={interactive ? "Drag to place yourself on the grid" : undefined}
+          tabIndex={interactive ? 0 : undefined}
+          aria-label={interactive ? "Your position on the grid" : undefined}
+          aria-describedby={interactive ? "plane-help" : undefined}
+          onKeyDown={interactive ? handleKey : undefined}
           onPointerDown={
             interactive
               ? (event) => {
@@ -225,6 +282,22 @@ export default function Plane({ grid, plots, marker, onMarkerChange, muted }: Pr
       </div>
 
       <div className="plane-label plane-label-y">{grid.y_bottom}</div>
+
+      {interactive && (
+        <>
+          {/* Where the marker actually is, in words. Sighted users get no read
+              on this from the dot alone, and it is the only feedback a screen
+              reader gets — so it is one element serving both, announced politely
+              so a held-down arrow key doesn't flood the queue. */}
+          <p className="plane-readout" aria-live="polite">
+            {readout}
+          </p>
+          <p className="hint" id="plane-help">
+            Drag or tap the square, or focus it and use the arrow keys — hold
+            shift for bigger steps.
+          </p>
+        </>
+      )}
     </div>
   );
 }

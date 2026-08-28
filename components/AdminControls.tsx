@@ -119,10 +119,19 @@ export function NewGridForm() {
     event.preventDefault();
     if (!complete) return;
     setError(null);
+    const sent = form;
     startTransition(async () => {
-      const result = await putGridUp({ ...form, title: form.title || null });
-      if (result.error) setError(result.error);
-      else setForm(EMPTY);
+      const result = await putGridUp({ ...sent, title: sent.title || null });
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      // Same race as IdeaForm: don't reset fields that have been retyped since.
+      setForm((current) =>
+        (Object.keys(EMPTY) as (keyof typeof EMPTY)[]).every((key) => current[key] === sent[key])
+          ? EMPTY
+          : current,
+      );
     });
   }
 
