@@ -377,6 +377,52 @@ a {
 
 /* ---------- sharing ---------- */
 
+/* A native <dialog>: showModal() supplies the focus trap, Escape, the inert
+   background and this ::backdrop.
+
+   Pinned to the bottom rather than centred, and the backdrop kept light. This
+   opens on the one moment the whole app is built around — the board revealing
+   itself — and a centred sheet lands squarely on top of it while the copy
+   claims everyone is visible now. From down here the reveal still reads. */
+.sheet {
+  margin: auto auto 0;
+  width: min(480px, 100vw);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.sheet::backdrop {
+  background: rgba(10, 12, 15, 0.32);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sheet[open] {
+    animation: sheet-up 180ms ease-out;
+  }
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+}
+
+.sheet-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 20px 28px;
+}
+
+.sheet-body h2 {
+  font-size: 17px;
+}
+
 /* The manual fallback, for a browser with neither a share sheet nor clipboard
    access. Full width so it wraps onto its own line rather than crushing the
    buttons beside it. */

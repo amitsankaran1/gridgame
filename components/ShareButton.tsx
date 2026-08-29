@@ -11,7 +11,14 @@ import { useEffect, useRef, useState } from "react";
  * browsers mostly lack it, so they fall back to the clipboard, and anything
  * that blocks both gets the URL as selectable text rather than a dead button.
  */
-export default function ShareButton({ question }: { question: string }) {
+export default function ShareButton({
+  question,
+  primary = false,
+}: {
+  question: string;
+  /** The sheet leads with it; the button row beside "Move my dot" does not. */
+  primary?: boolean;
+}) {
   // window doesn't exist while this renders on the server, and reading it
   // during render would be a hydration mismatch. The button is useless for the
   // few milliseconds before this lands, so it stays disabled until then.
@@ -58,7 +65,11 @@ export default function ShareButton({ question }: { question: string }) {
 
   return (
     <>
-      <button className="button secondary" onClick={share} disabled={!url}>
+      <button
+        className={primary ? "button" : "button secondary"}
+        onClick={share}
+        disabled={!url}
+      >
         Share
       </button>
 

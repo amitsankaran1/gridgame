@@ -34,6 +34,7 @@ Env vars:
 | `DATABASE_URL` | Postgres connection string |
 | `ADMIN_PASSWORD` | The single operator password for `/admin` |
 | `ADMIN_SESSION_SECRET` | `openssl rand -hex 32` |
+| `NEXT_PUBLIC_SITE_URL` | Optional. Public origin for the share-preview image; inferred from `VERCEL_PROJECT_PRODUCTION_URL` on Vercel |
 
 ## Tests
 
@@ -50,8 +51,9 @@ Postgres, a Server Function writing it, or a drag landing on a pixel, and a mock
 of any of those tests the mock. It covers the reveal gate (including that a
 locked board's coordinates are absent from the raw response, not just hidden), a
 drag round-tripping through the database, a three-way tie at 390px, keyboard-only
-placement, all three tiers of the share fallback, admin authorisation by replaying
-a captured action without the cookie, and the empty states.
+placement, all three tiers of the share fallback, the preview image's headers and
+dimensions, admin authorisation by replaying a captured action without the cookie,
+and the empty states.
 
 Run it against a throwaway database — it writes grids, players and ideas, and
 takes the live grid down at the end.
@@ -73,11 +75,13 @@ app/
   ideas/page.tsx        suggest a grid, see your own submissions
   admin/page.tsx        the queue, put a grid up, take one down
   admin/actions.ts      signIn · signOut · putGridUp · takeGridDown · setIdeaStatus
+  opengraph-image.tsx   the share preview, drawn per grid at request time
 components/
   Plane.tsx             the square: axes, dots, collision fan-out, drag, arrow keys
   Board.tsx             marker state + commit (the only substantial client component)
   Splash.tsx            the first-timer explainer (a Server Component — no JS)
   ShareButton.tsx       share sheet → clipboard → visible URL
+  ShareDialog.tsx       the bottom sheet, on your first placement only
   ArchivedBoard.tsx  IdeaForm.tsx  InitialsEntry.tsx  AdminControls.tsx  Nav.tsx
 lib/
   queries.ts            every read, including the reveal gate
@@ -97,7 +101,7 @@ action rather than in a page or a proxy: Server Functions POST to the route of t
 page they're used on, so nothing outside them covers them. The `isAdmin()` call in
 `app/admin/page.tsx` only decides what to render.
 
-## Six things that are easy to get wrong
+## Seven things that are easy to get wrong
 
 **The reveal gate is server-side.** If the client filtered the dots they would be
 one devtools tab away. `boardFor()` in `lib/queries.ts` doesn't *select* the
@@ -128,6 +132,17 @@ exactly the people who have not committed, so anything real on it would be a hol
 in the gate. Its diagram is schematic — the blurred marks are decoration, not
 data, and the blur is the gate drawn as a picture. `tests/e2e.mjs` asserts a
 newcomer's splash carries no plotted player's initials.
+
+**The share preview is drawn per request, on the Node runtime.**
+`app/opengraph-image.tsx` reads the live grid through `pg`, so it cannot run on
+Edge, and it is `force-dynamic` because a cached one would advertise the grid
+that just got archived. It draws no plots — the image is public and the board is
+not. Its type is sized for a chat thumbnail rather than for a 1200px canvas, and
+both the type and the square step down together when the labels are long.
+
+A preview only unfurls from a **publicly reachable** URL. A Vercel preview
+deployment is behind deployment protection, so a link to one previews as
+"Protected Deployment" no matter what this file draws. Share the production URL.
 
 **A form that clears itself has to clear only what it sent.** A Server Action plus
 its revalidation can outlast the moment someone starts typing the next entry, and

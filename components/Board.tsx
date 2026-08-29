@@ -4,9 +4,26 @@ import { useState, useTransition } from "react";
 import { placeDot } from "@/app/actions";
 import Plane, { PlotList } from "@/components/Plane";
 import ShareButton from "@/components/ShareButton";
+import ShareDialog from "@/components/ShareDialog";
 import type { Grid, PublicPlot } from "@/lib/types";
 
 type Point = { x: number; y: number };
+
+/**
+ * The line under the title. Zero needs a sentence of its own: "0 people are
+ * already on the board — hidden until you place yourself" promises a crowd that
+ * isn't there, and it is the first thing anyone reads on a brand-new grid.
+ */
+function headline(count: number, committed: boolean): string {
+  if (!committed) {
+    if (count === 0) return "Nobody has plotted yet. Go first.";
+    const who = count === 1 ? "person is" : "people are";
+    return `${count} ${who} already on the board — hidden until you place yourself.`;
+  }
+  // Committed means at least your own dot is counted, so 0 is unreachable here.
+  if (count === 1) return "You're the first.";
+  return `${count} people have plotted.`;
+}
 
 /**
  * The only substantial client component: it owns drag state and calls the
@@ -29,6 +46,7 @@ export default function Board({
   const [moving, setMoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showList, setShowList] = useState(false);
+  const [justJoined, setJustJoined] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const committed = myPlot !== null;
@@ -36,21 +54,28 @@ export default function Board({
 
   function commit() {
     setError(null);
+    // Read it before the action: the revalidation flips `committed` underneath
+    // us, so afterwards there is no way to tell a first placement from a move.
+    const isFirstPlacement = !committed;
     startTransition(async () => {
       const result = await placeDot(marker.x, marker.y);
-      if (result.error) setError(result.error);
-      else setMoving(false);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      setMoving(false);
+      if (isFirstPlacement) setJustJoined(true);
     });
   }
+
+  const question = `${grid.x_left} ↔ ${grid.x_right}`;
 
   return (
     <div className="stack">
       <div>
         <h1>{grid.title ?? "This week"}</h1>
         <p className="meta">
-          {committed
-            ? `${count} ${count === 1 ? "person has" : "people have"} plotted.`
-            : `${count} ${count === 1 ? "person is" : "people are"} already on the board — hidden until you place yourself.`}
+          {headline(count, committed)}
         </p>
       </div>
 
@@ -88,7 +113,7 @@ export default function Board({
           </button>
           {/* Only here: sharing is offered once you have skin in the game, and
               never while the board is still locked to you. */}
-          <ShareButton question={`${grid.x_left} ↔ ${grid.x_right}`} />
+          <ShareButton question={question} />
           <button className="button link" onClick={() => setShowList((v) => !v)}>
             {showList ? "hide list" : "show as list"}
           </button>
@@ -105,6 +130,12 @@ export default function Board({
       )}
 
       {committed && showList && <PlotList plots={plots} />}
+
+      <ShareDialog
+        open={justJoined}
+        onClose={() => setJustJoined(false)}
+        question={question}
+      />
     </div>
   );
 }
