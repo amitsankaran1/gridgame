@@ -79,7 +79,10 @@ const hydrated = (page, selector = "form") =>
 async function setInitials(page, initials, color = "slate") {
   await page.goto(`${BASE}/`);
   const next = page.getByRole("button", { name: "Continue" });
-  if ((await next.count()) > 0) await next.click();
+  if ((await next.count()) > 0) {
+    await next.click();
+    await page.locator("#initials").waitFor({ state: "visible" });
+  }
   await hydrated(page, "form.initials-form");
   await page.fill("#initials", initials);
   if (color) await page.locator(`.swatch[data-color="${color}"]`).click();
@@ -124,7 +127,14 @@ const settleAnimations = (page) =>
  * using the board goes through here.
  */
 async function dismissSheet(page) {
-  if ((await page.locator("dialog.sheet[open]").count()) === 0) return;
+  // The sheet opens in an effect after the first-commit render, so
+  // networkidle can win that race and we'd leave a modal sitting on the board.
+  const sheet = page.locator("dialog.sheet[open]");
+  try {
+    await sheet.waitFor({ timeout: 1_500 });
+  } catch {
+    return;
+  }
   await page.getByRole("button", { name: "not now" }).click();
   await page.waitForFunction(() => !document.querySelector("dialog.sheet[open]"));
 }
@@ -140,6 +150,9 @@ async function placeAt(page, x, y) {
   await page.mouse.move(px, py);
   await page.mouse.up();
   await page.getByRole("button", { name: /Place me here|Move me here/ }).click();
+  // Modal share sheet makes the board inert, so the new dot is attached but
+  // not "visible" to Playwright until the sheet is dismissed.
+  await page.waitForSelector(".plane-dot", { state: "attached", timeout: 10_000 });
   await settle(page);
   await settleAnimations(page);
   await dismissSheet(page);
@@ -759,6 +772,7 @@ group("The share sheet");
   };
 
   await commit();
+  await page.locator("dialog.sheet[open]").waitFor({ timeout: 10_000 });
   const sheet = page.locator("dialog.sheet[open]");
   ok((await sheet.count()) === 1, "placing yourself opens the share sheet");
   ok(
