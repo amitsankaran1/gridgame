@@ -55,8 +55,7 @@ export default function ShareDialog({
           themselves.
         </p>
         <p className="meta">
-          Got a better pair of axes?{" "}
-          <Link href="/ideas">Submit a grid</Link> for a future week.
+          Got next week&apos;s grid? <Link href="/ideas">Suggest one</Link>.
         </p>
         <div className="row">
           <ShareButton question={question} primary />

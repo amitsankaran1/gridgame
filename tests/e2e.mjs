@@ -780,8 +780,8 @@ group("The share sheet");
     "…with a share button in it",
   );
   ok(
-    (await sheet.getByRole("link", { name: "Submit a grid" }).getAttribute("href")) === "/ideas",
-    "…and a link to submit a grid for a future week",
+    (await sheet.getByRole("link", { name: "Suggest one" }).getAttribute("href")) === "/ideas",
+    "…and a link to suggest next week's grid",
   );
 
   // It opens on the reveal, so it must not sit on top of the reveal.
