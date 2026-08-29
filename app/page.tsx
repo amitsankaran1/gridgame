@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Board from "@/components/Board";
-import Onboarding from "@/components/Onboarding";
+import Splash from "@/components/Splash";
 import { colorFor } from "@/lib/colors";
 import { activeGrid, boardFor } from "@/lib/queries";
 import { getPlayer } from "@/lib/session";
@@ -26,9 +26,7 @@ export default async function Home() {
 
   // Having initials is the record that you have been here before, so this is
   // also what keeps the intro a once-ever thing rather than a weekly toll.
-  if (!player?.initials) {
-    return <Onboarding grid={grid} />;
-  }
+  if (!player?.initials) return <Splash grid={grid} />;
 
   const board = await boardFor(grid.id, player.id);
   if (!board) return null;

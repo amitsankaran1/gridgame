@@ -15,12 +15,13 @@ Reasons included so these don't get re-litigated.
   opens the link at once. Notion stays a candidate for *authoring* grids later.
 - **Identity is a cookie, and nothing else, for now.** Near-zero friction to
   place a first dot. The cost is that history dies with the cookie — see below.
-- **Onboarding is two screens, once ever.** The week's question first, then
-  initials and a colour. Showing someone what the house is arguing about before
-  asking them to name themselves is the whole point of the ordering; a third
-  "how it works" screen was considered and dropped, because the drag hint already
-  lives under the square and the reveal gate is explained on the board itself.
-  Having initials *is* the record that you have been here, so nothing persists.
+- **Onboarding is one screen, once ever.** The week's question lives on the
+  splash; initials and a colour sit under it on the same page. A second "who
+  are you" screen was tried and dropped — it made the intro a toll. A third
+  "how it works" screen was considered and dropped for the same reason: the
+  drag hint already lives under the square and the reveal gate is explained on
+  the board itself. Having initials *is* the record that you have been here,
+  so nothing persists.
 - **Colour is a curated palette of eight, not a free picker.** A dot has to stay
   legible on two grounds; a free hex lets someone pick the dark background and
   vanish. Each entry is defined twice in `globals.css` and clears 4.5:1 on its
@@ -67,7 +68,7 @@ Reasons included so these don't get re-litigated.
 
 - [x] Warmth pass on the game page: a copy rewrite that says what is true
       socially rather than what is true in the database, a staggered entrance for
-      the dots at the moment of reveal, player-chosen colours, and the two-screen
+      the dots at the moment of reveal, player-chosen colours, and a one-screen
       intro. Screenshotted at 390px in both schemes before it was called done —
       the swatches wrapped 7+1 and the colour preview read as a ninth swatch, and
       neither was visible until rendered.

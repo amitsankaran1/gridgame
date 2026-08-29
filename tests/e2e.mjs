@@ -72,22 +72,39 @@ const hydrated = (page, selector = "form") =>
   );
 
 /**
- * Walk a fresh player through onboarding: the welcome screen, then initials and
- * a colour. `color` picks a specific swatch so a test can assert on it; leaving
- * it off keeps whatever the form randomly pre-selected.
+ * Walk a fresh player through onboarding: initials and a colour, on the same
+ * screen as the week's question. `color` picks a specific swatch so a test can
+ * assert on it; leaving it off keeps whatever the form randomly pre-selected.
  */
 async function setInitials(page, initials, color) {
   await page.goto(`${BASE}/`);
-  // The welcome screen renders a non-interactive plane, so wait for the button
-  // rather than for .plane-square — the square exists on both screens.
-  await page.waitForSelector("button", { timeout: 10_000 });
-  await page.getByRole("button", { name: "I'm in" }).click();
   await hydrated(page, "form.initials-form");
   await page.fill("#initials", initials);
   if (color) await page.locator(`.swatch[data-color="${color}"]`).click();
   await page.click("form.initials-form button[type=submit]");
   await page.waitForSelector(".plane-square", { timeout: 10_000 });
 }
+
+/**
+ * Labels that have escaped their square. Used for both the splash schematic
+ * and the real board — the same bug looks the same in both places.
+ */
+const escapedLabels = (containerSel, labelSel) => (page) =>
+  page.evaluate(
+    ({ containerSel: c, labelSel: l }) => {
+      const box = document.querySelector(c).getBoundingClientRect();
+      return [...document.querySelectorAll(l)]
+        .filter((el) => {
+          const r = el.getBoundingClientRect();
+          return (
+            r.left < box.left - 0.5 || r.right > box.right + 0.5 ||
+            r.top < box.top - 0.5 || r.bottom > box.bottom + 0.5
+          );
+        })
+        .map((el) => el.textContent.trim());
+    },
+    { containerSel, labelSel },
+  );
 
 /**
  * Dots now animate in when the board opens up. Their transforms are mid-flight
@@ -223,11 +240,59 @@ group("The splash");
       (await page.getByText("not chill").count()) > 0,
     "…and this week's real axis labels, so you know what you're answering",
   );
+  ok(await page.locator("#initials").isVisible(), "the initials field is on the same screen");
+  ok((await page.locator(".swatch").count()) === 8, "…and so is the colour picker");
   ok(
-    await page.getByRole("button", { name: "I'm in" }).isVisible(),
-    "the welcome screen asks you in before asking for initials",
+    (await page.getByRole("button", { name: "I'm in" }).count()) === 0,
+    "there is no second screen to click through",
   );
-  ok((await page.locator("#initials").count()) === 0, "…and the initials field is not on it yet");
+
+  const splashEscaped = await escapedLabels(".splash-board", ".splash-label")(page);
+  ok(
+    splashEscaped.length === 0,
+    "splash axis labels sit inside the square",
+    splashEscaped.join(", "),
+  );
+  const splashEdges = await page.evaluate(() => {
+    const board = document.querySelector(".splash-board").getBoundingClientRect();
+    const mid = (sel) => {
+      const r = document.querySelector(sel).getBoundingClientRect();
+      return {
+        x: (r.left + r.right) / 2 - board.left,
+        y: (r.top + r.bottom) / 2 - board.top,
+      };
+    };
+    return {
+      top: mid(".splash-label-top"),
+      bottom: mid(".splash-label-bottom"),
+      left: mid(".splash-label-left"),
+      right: mid(".splash-label-right"),
+      w: board.width,
+      h: board.height,
+    };
+  });
+  ok(splashEdges.top.y < splashEdges.h * 0.25, "the top label sits on the top edge");
+  ok(splashEdges.bottom.y > splashEdges.h * 0.75, "the bottom label sits on the bottom edge");
+  ok(splashEdges.left.x < splashEdges.w * 0.25, "the left label sits on the left edge");
+  ok(splashEdges.right.x > splashEdges.w * 0.75, "the right label sits on the right edge");
+
+  ok((await page.locator(".splash-you, .splash-you-label").count()) === 0, "no leftover orange-you on the splash");
+  ok((await page.locator(".splash-me-halo").count()) === 1, "ownership on the schematic is a halo ring");
+  const splashFill = await page.evaluate(() => {
+    const probe = document.createElement("div");
+    probe.style.color = "var(--dot-me)";
+    document.body.appendChild(probe);
+    const me = getComputedStyle(probe).color;
+    probe.remove();
+    const mark = document.querySelector(".splash-me-mark");
+    return { fill: mark ? getComputedStyle(mark).fill : null, me };
+  });
+  ok(
+    splashFill.fill && splashFill.me && splashFill.fill !== splashFill.me,
+    "…and the mark is not the leftover orange-for-me",
+    JSON.stringify(splashFill),
+  );
+
   ok(
     (await page.getByRole("link", { name: "Submit" }).count()) === 1 &&
       (await page.getByRole("link", { name: "Ideas" }).count()) === 0,
@@ -262,8 +327,7 @@ group("The reveal gate");
 const alice = await person();
 {
   await alice.page.goto(`${BASE}/`);
-  ok(await alice.page.getByRole("button", { name: "I'm in" }).isVisible(),
-    "a new visitor gets the intro before being asked for anything");
+  ok(await alice.page.locator("#initials").isVisible(), "a new visitor is asked for initials");
 
   await setInitials(alice.page, "AAA");
   ok(await alice.page.locator(".plane-square").isVisible(), "the square renders once initials are set");
@@ -332,8 +396,8 @@ group("Placing and moving");
   );
 
   await alice.page.getByRole("button", { name: "Move me" }).click();
-  // Your committed dot must give way to the marker while you aim: two orange
-  // marks and two labels stacked on one coordinate is unreadable.
+  // Your committed dot must give way to the marker while you aim: two marks
+  // and two labels stacked on one coordinate is unreadable.
   ok(
     (await alice.page.locator(".plane-dot.is-me").count()) === 0 &&
       (await alice.page.locator(".plane-marker").count()) === 1,
@@ -375,6 +439,41 @@ const tie = [];
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
   ok(overflow === 0, "the page does not scroll sideways at 390px", `overflow ${overflow}px`);
+
+  // PR #3: labels live inside the square so the square can stay full-width on
+  // a phone. Outside labels take their width out of the square; 16px padding
+  // either side of a 390px viewport leaves 358px. A 3-column outside layout
+  // lands well under 300.
+  const boardGeom = await page.evaluate(() => {
+    const square = document.querySelector(".plane-square").getBoundingClientRect();
+    return { w: Math.round(square.width), vw: document.documentElement.clientWidth };
+  });
+  ok(
+    boardGeom.w >= boardGeom.vw - 40,
+    "the board stays full-width on a phone",
+    `${boardGeom.w}px in a ${boardGeom.vw}px viewport`,
+  );
+  const axisEscaped = await escapedLabels(".plane-square", ".plane-label")(page);
+  ok(axisEscaped.length === 0, "axis labels sit inside the square", axisEscaped.join(", "));
+  const axisEdges = await page.evaluate(() => {
+    const box = document.querySelector(".plane-square").getBoundingClientRect();
+    const mid = (edge) => {
+      const r = document.querySelector(`.plane-label-${edge}`).getBoundingClientRect();
+      return { x: (r.left + r.right) / 2 - box.left, y: (r.top + r.bottom) / 2 - box.top };
+    };
+    return {
+      top: mid("top"),
+      bottom: mid("bottom"),
+      left: mid("left"),
+      right: mid("right"),
+      w: box.width,
+      h: box.height,
+    };
+  });
+  ok(axisEdges.top.y < axisEdges.h * 0.25, "the top axis label sits on the top edge");
+  ok(axisEdges.bottom.y > axisEdges.h * 0.75, "the bottom axis label sits on the bottom edge");
+  ok(axisEdges.left.x < axisEdges.w * 0.25, "the left axis label sits on the left edge");
+  ok(axisEdges.right.x > axisEdges.w * 0.75, "the right axis label sits on the right edge");
 
   const clipped = await page.evaluate(() => {
     const square = document.querySelector(".plane-square");
@@ -938,7 +1037,6 @@ group("Bad input and bad URLs");
   ok(missing.status() === 404, "an unknown archive id 404s", `got ${missing.status()}`);
 
   await page.goto(`${BASE}/`);
-  await page.getByRole("button", { name: "I'm in" }).click();
   await hydrated(page, "form.initials-form");
   await page.fill("#initials", "ab");
   ok(

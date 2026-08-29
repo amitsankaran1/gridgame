@@ -5,10 +5,10 @@ import type { PlayerColor } from "@/lib/colors";
 import type { Grid, PublicPlot } from "@/lib/types";
 
 /**
- * Labels sit outside the square, but a dot at the very edge would still have its
- * own label clipped by `overflow: hidden`. So the plottable area is inset from
- * the square by a fixed number of PIXELS — not a percentage, because the label's
- * size doesn't scale with the square.
+ * Axis labels sit inside the square, each on the edge it names. A dot at the
+ * very edge would still have its own label clipped by `overflow: hidden`, so
+ * the plottable area is inset from the square by a fixed number of PIXELS —
+ * not a percentage, because the label's size doesn't scale with the square.
  */
 const INSET_PX = 24;
 

@@ -442,51 +442,71 @@ a {
 
 /* ---------- splash ---------- */
 
-/* Same structure as .plane, deliberately: it is a small rehearsal of the thing
-   on the next screen, so the labels sit where they will sit for real. Narrow,
-   because this is an illustration and the real square is the payoff. */
+/* Same structure as .plane, deliberately: a rehearsal of the real square, so
+   the labels sit where they will sit for real — inside, each on the edge it
+   names. Narrow, because this is an illustration and the real square is the
+   payoff. The board itself stays width: 100%; putting labels outside here
+   would also be the wrong picture of what you are about to walk into. */
 .splash-plane {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
   width: 100%;
   max-width: 220px;
   margin: 0 auto;
-  text-align: center;
 }
 
-/* The splash keeps its labels OUTSIDE its diagram — it is a static picture of
-   the idea, not the board, so nothing can land on a label and there is no
-   reason to move them in. It used to borrow .plane-label for this, but that
-   class now means "absolutely positioned against an edge of the square", so
-   the two need separate names. */
-.splash-label {
-  color: var(--ink-soft);
-  font-size: 13px;
-  /* A label is capped at 40 characters but not at 40 *words* — one long
-     unbreakable run would overhang the diagram. */
-  overflow-wrap: anywhere;
-}
-
-.splash-x-labels {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.splash-label-x {
-  max-width: 46%;
-  text-align: left;
-}
-
-.splash-x-labels .splash-label-x:last-child {
-  text-align: right;
+.splash-board {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
 }
 
 .splash-square {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
+}
+
+.splash-label {
+  position: absolute;
+  text-align: center;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  pointer-events: none;
+  /* A label is capped at 40 characters but not at 40 *words* — one long
+     unbreakable run would clip against the square's edge. */
+  overflow-wrap: anywhere;
+}
+
+.splash-label-top,
+.splash-label-bottom {
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 60%;
+}
+
+.splash-label-top {
+  top: 6px;
+}
+
+.splash-label-bottom {
+  bottom: 6px;
+}
+
+.splash-label-left,
+.splash-label-right {
+  top: 50%;
+  transform: translateY(-50%);
+  max-width: 34%;
+}
+
+.splash-label-left {
+  left: 6px;
+}
+
+.splash-label-right {
+  right: 6px;
 }
 
 .splash-frame {
@@ -513,16 +533,18 @@ a {
   filter: blur(2.5px);
 }
 
-.splash-you {
-  fill: var(--dot-me);
+/* Your mark on the schematic. Same halo the board uses for ownership — a ring
+   held off the mark by a gap in the page colour — not the leftover orange that
+   used to mean "me". Ink rather than a palette colour: nobody has picked one
+   yet, and a hardcoded --dot-me would reintroduce orange-for-me. */
+.splash-me-mark {
+  fill: var(--ink-soft);
 }
 
-/* Inside the SVG, so it scales with the diagram rather than with the page. */
-.splash-you-label {
-  fill: var(--dot-me);
-  font-size: 7px;
-  font-weight: 500;
-  letter-spacing: 0.05em;
+.splash-me-halo {
+  fill: none;
+  stroke: var(--ink-soft);
+  stroke-width: 1.6;
 }
 
 .splash-steps {
