@@ -22,8 +22,8 @@ export default function Splash({ grid }: { grid: Grid }) {
       <div>
         <h1>{grid.title ?? "This week"}</h1>
         <p className="meta">
-          Everyone in the house puts themselves somewhere on this square. You
-          get one dot, and you can move it whenever you change your mind.
+          Place yourself on this week&apos;s grid. You get one dot, and you can
+          move it if you change your mind.
         </p>
       </div>
 

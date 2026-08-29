@@ -24,7 +24,7 @@ export default async function Archive() {
     <div className="stack">
       <div>
         <h1>Archive</h1>
-        <p className="meta">Every week the house has argued about so far.</p>
+        <p className="meta">Every week&apos;s grid so far.</p>
       </div>
       <ul className="card-list">
         {grids.map((grid) => (
