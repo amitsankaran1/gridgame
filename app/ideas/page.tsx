@@ -12,7 +12,9 @@ export default async function Ideas() {
     <div className="stack">
       <div>
         <h1>Suggest a grid</h1>
-        <p className="meta">Four ends of two axes. Good ones go up on a future week.</p>
+        <p className="meta">
+          Four ends of two axes. The good ones go up on a future week.
+        </p>
       </div>
 
       <IdeaForm />
@@ -20,7 +22,7 @@ export default async function Ideas() {
       <div className="section">
         <h2>Yours</h2>
         {ideas.length === 0 ? (
-          <p className="meta">You haven&apos;t sent any yet.</p>
+          <p className="meta">Nothing from you yet.</p>
         ) : (
           <ul className="card-list" style={{ marginTop: 12 }}>
             {ideas.map((idea) => (

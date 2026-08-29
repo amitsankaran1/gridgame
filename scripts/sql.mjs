@@ -2,12 +2,31 @@
 // the migration and the checks go through the exact driver the app uses.
 //   node --env-file=.env.local scripts/sql.mjs "select 1"
 //   node --env-file=.env.local scripts/sql.mjs --file supabase/migrations/0001_init.sql
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { Client } from "pg";
 
 const args = process.argv.slice(2);
-const sql =
-  args[0] === "--file" ? readFileSync(args[1], "utf8") : args.join(" ");
+
+/**
+ * --dir runs every .sql file in a directory in filename order, which is what
+ * `npm run migrate` uses. It used to name 0001_init.sql directly, so adding
+ * 0002 silently did nothing on anyone's database until they noticed.
+ * Every migration is written to be re-runnable, so this stays safe to repeat.
+ */
+function read() {
+  if (args[0] === "--dir") {
+    const dir = args[1];
+    return readdirSync(dir)
+      .filter((f) => f.endsWith(".sql"))
+      .sort()
+      .map((f) => readFileSync(join(dir, f), "utf8"))
+      .join("\n;\n");
+  }
+  return args[0] === "--file" ? readFileSync(args[1], "utf8") : args.join(" ");
+}
+
+const sql = read();
 if (!sql.trim()) {
   console.error("nothing to run");
   process.exit(1);

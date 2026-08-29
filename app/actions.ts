@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { queryOne } from "@/lib/db";
 import { activeGrid, pendingIdeaCount } from "@/lib/queries";
 import { getOrCreatePlayer } from "@/lib/session";
-import { parseAxes, parseCoord, parseInitials } from "@/lib/validate";
+import { parseAxes, parseColor, parseCoord, parseInitials } from "@/lib/validate";
 
 /**
  * Actions report failure by returning it, not by throwing: these are expected
@@ -16,16 +16,25 @@ export type ActionResult = { error?: string };
 
 const PENDING_CAP = 5;
 
-export async function setInitials(raw: string): Promise<ActionResult> {
-  const initials = parseInitials(raw);
+/**
+ * Initials and colour land together because onboarding asks for them on one
+ * screen. A profile is only complete once both have been chosen.
+ */
+export async function setProfile(rawInitials: string, rawColor: unknown): Promise<ActionResult> {
+  const initials = parseInitials(rawInitials);
   if (!initials) return { error: "Initials must be three letters or numbers." };
+  const color = parseColor(rawColor);
+  if (!color) return { error: "Choose a colour." };
 
   const player = await getOrCreatePlayer();
-  await queryOne(`update players set initials = $2 where id = $1`, [
+  await queryOne(`update players set initials = $2, color = $3 where id = $1`, [
     player.id,
     initials,
+    color,
   ]);
   revalidatePath("/");
+  // A colour change repaints past boards too, so the archive is stale as well.
+  revalidatePath("/archive", "layout");
   return {};
 }
 

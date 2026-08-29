@@ -1,7 +1,14 @@
+import { isPlayerColor, type PlayerColor } from "./colors";
+
 /** Clamp to the -1…1 plane. Rejects anything that isn't a finite number. */
 export function parseCoord(value: unknown): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
   return Math.min(1, Math.max(-1, value));
+}
+
+/** One of the eight palette names, or null. */
+export function parseColor(value: unknown): PlayerColor | null {
+  return isPlayerColor(value) ? value : null;
 }
 
 /** Exactly three characters, A–Z or 0–9, upper-cased. */

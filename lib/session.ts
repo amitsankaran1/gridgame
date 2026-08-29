@@ -6,7 +6,7 @@ import { isUuid } from "./validate";
 export const PLAYER_COOKIE = "gg_player";
 const ONE_YEAR = 60 * 60 * 24 * 365;
 
-export type Player = { id: string; initials: string | null };
+export type Player = { id: string; initials: string | null; color: string | null };
 
 /**
  * The player this request belongs to, or null.
@@ -23,7 +23,7 @@ export async function getPlayer(): Promise<Player | null> {
   if (!id) return null;
   try {
     return await queryOne<Player>(
-      `select id, initials from players where id = $1`,
+      `select id, initials, color from players where id = $1`,
       [id],
     );
   } catch {
@@ -49,7 +49,7 @@ export async function getOrCreatePlayer(): Promise<Player> {
   const created = await queryOne<Player>(
     `insert into players (id) values ($1)
      on conflict (id) do update set id = excluded.id
-     returning id, initials`,
+     returning id, initials, color`,
     [isUuid(id) ? id : randomUUID()],
   );
   if (!created) throw new Error("could not create player");

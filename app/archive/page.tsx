@@ -13,14 +13,19 @@ export default async function Archive() {
     return (
       <div className="stack">
         <h1>Archive</h1>
-        <p className="notice">Nothing has been archived yet.</p>
+        <p className="notice">
+          Empty for now. The first grid to come down lands here, and stays.
+        </p>
       </div>
     );
   }
 
   return (
     <div className="stack">
-      <h1>Archive</h1>
+      <div>
+        <h1>Archive</h1>
+        <p className="meta">Every week the house has argued about so far.</p>
+      </div>
       <ul className="card-list">
         {grids.map((grid) => (
           <li className="card" key={grid.id}>

@@ -71,13 +71,50 @@ const hydrated = (page, selector = "form") =>
     { timeout: 15_000 },
   );
 
-async function setInitials(page, initials) {
+/**
+ * Walk a fresh player through onboarding: initials and a colour, on the same
+ * screen as the week's question. `color` picks a specific swatch so a test can
+ * assert on it; the default keeps older call sites explicit about selecting one.
+ */
+async function setInitials(page, initials, color = "slate") {
   await page.goto(`${BASE}/`);
   await hydrated(page, "form.initials-form");
   await page.fill("#initials", initials);
+  if (color) await page.locator(`.swatch[data-color="${color}"]`).click();
   await page.click("form.initials-form button[type=submit]");
   await page.waitForSelector(".plane-square", { timeout: 10_000 });
 }
+
+/**
+ * Labels that have escaped their square. Used for both the splash schematic
+ * and the real board — the same bug looks the same in both places.
+ */
+const escapedLabels = (containerSel, labelSel) => (page) =>
+  page.evaluate(
+    ({ containerSel: c, labelSel: l }) => {
+      const box = document.querySelector(c).getBoundingClientRect();
+      return [...document.querySelectorAll(l)]
+        .filter((el) => {
+          const r = el.getBoundingClientRect();
+          return (
+            r.left < box.left - 0.5 || r.right > box.right + 0.5 ||
+            r.top < box.top - 0.5 || r.bottom > box.bottom + 0.5
+          );
+        })
+        .map((el) => el.textContent.trim());
+    },
+    { containerSel, labelSel },
+  );
+
+/**
+ * Dots now animate in when the board opens up. Their transforms are mid-flight
+ * for a few hundred milliseconds, so anything measuring geometry has to let the
+ * entrance finish or it measures a dot that is still 30% of its final size.
+ */
+const settleAnimations = (page) =>
+  page.evaluate(() =>
+    Promise.all(document.getAnimations().map((a) => a.finished.catch(() => {}))),
+  );
 
 /**
  * The share sheet opens on a first placement and is modal, so anything behind
@@ -100,8 +137,9 @@ async function placeAt(page, x, y) {
   await page.mouse.down();
   await page.mouse.move(px, py);
   await page.mouse.up();
-  await page.getByRole("button", { name: /Place me here|Move my dot here/ }).click();
+  await page.getByRole("button", { name: /Place me here|Move me here/ }).click();
   await settle(page);
+  await settleAnimations(page);
   await dismissSheet(page);
   return { px, py };
 }
@@ -111,9 +149,9 @@ group("No grid is up");
 {
   const { ctx, page } = await person();
   await page.goto(`${BASE}/`);
-  ok(await page.getByText("Nothing up yet").isVisible(), "home explains there is no grid");
+  ok(await page.getByText("Between rounds").isVisible(), "home explains there is no grid");
   await page.goto(`${BASE}/archive`);
-  ok(await page.getByText("Nothing has been archived yet").isVisible(), "archive has an empty state");
+  ok(await page.getByText("The first grid to come down").isVisible(), "archive has an empty state");
   await ctx.close();
 }
 
@@ -202,7 +240,73 @@ group("The splash");
       (await page.getByText("not chill").count()) > 0,
     "…and this week's real axis labels, so you know what you're answering",
   );
-  ok(await page.locator("#initials").isVisible(), "the initials field is on it");
+  ok(await page.locator("#initials").isVisible(), "the initials field is on the same screen");
+  ok((await page.locator(".swatch").count()) === 8, "…and so is the colour picker");
+  ok(
+    await page.locator('form.initials-form button[type="submit"]').isDisabled(),
+    "the form stays disabled until a colour is chosen",
+  );
+  await page.locator('.swatch[data-color="plum"]').click();
+  await page.locator('.swatch[data-color="slate"]').click();
+  const picked = await page.locator('.swatch.is-selected').evaluateAll((swatches) =>
+    swatches.map((swatch) => swatch.getAttribute("data-color")),
+  );
+  ok(
+    picked.length === 1 && picked[0] === "slate",
+    "changing colour leaves exactly the new swatch selected",
+    JSON.stringify(picked),
+  );
+  ok(
+    (await page.getByRole("button", { name: "I'm in" }).count()) === 0,
+    "there is no second screen to click through",
+  );
+
+  const splashEscaped = await escapedLabels(".splash-board", ".splash-label")(page);
+  ok(
+    splashEscaped.length === 0,
+    "splash axis labels sit inside the square",
+    splashEscaped.join(", "),
+  );
+  const splashEdges = await page.evaluate(() => {
+    const board = document.querySelector(".splash-board").getBoundingClientRect();
+    const mid = (sel) => {
+      const r = document.querySelector(sel).getBoundingClientRect();
+      return {
+        x: (r.left + r.right) / 2 - board.left,
+        y: (r.top + r.bottom) / 2 - board.top,
+      };
+    };
+    return {
+      top: mid(".splash-label-top"),
+      bottom: mid(".splash-label-bottom"),
+      left: mid(".splash-label-left"),
+      right: mid(".splash-label-right"),
+      w: board.width,
+      h: board.height,
+    };
+  });
+  ok(splashEdges.top.y < splashEdges.h * 0.25, "the top label sits on the top edge");
+  ok(splashEdges.bottom.y > splashEdges.h * 0.75, "the bottom label sits on the bottom edge");
+  ok(splashEdges.left.x < splashEdges.w * 0.25, "the left label sits on the left edge");
+  ok(splashEdges.right.x > splashEdges.w * 0.75, "the right label sits on the right edge");
+
+  ok((await page.locator(".splash-you, .splash-you-label").count()) === 0, "no leftover orange-you on the splash");
+  ok((await page.locator(".splash-me-halo").count()) === 1, "ownership on the schematic is a halo ring");
+  const splashFill = await page.evaluate(() => {
+    const probe = document.createElement("div");
+    probe.style.color = "var(--dot-me)";
+    document.body.appendChild(probe);
+    const me = getComputedStyle(probe).color;
+    probe.remove();
+    const mark = document.querySelector(".splash-me-mark");
+    return { fill: mark ? getComputedStyle(mark).fill : null, me };
+  });
+  ok(
+    splashFill.fill && splashFill.me && splashFill.fill !== splashFill.me,
+    "…and the mark is not the leftover orange-for-me",
+    JSON.stringify(splashFill),
+  );
+
   ok(
     (await page.getByRole("link", { name: "Submit" }).count()) === 1 &&
       (await page.getByRole("link", { name: "Ideas" }).count()) === 0,
@@ -268,7 +372,7 @@ const bob = await person();
   const raw = await res.text();
   ok(!raw.includes("BBB"), "…nor in the raw server response");
   ok(
-    (await alice.page.getByText(/1 person is already on the board/).count()) > 0,
+    (await alice.page.getByText(/One person is already out there/).count()) > 0,
     "the locked board still reports the headcount",
   );
 
@@ -305,9 +409,9 @@ group("Placing and moving");
     `got ${x}, ${y}`,
   );
 
-  await alice.page.getByRole("button", { name: "Move my dot" }).click();
-  // Your committed dot must give way to the marker while you aim: two orange
-  // marks and two labels stacked on one coordinate is unreadable.
+  await alice.page.getByRole("button", { name: "Move me" }).click();
+  // Your committed dot must give way to the marker while you aim: two marks
+  // and two labels stacked on one coordinate is unreadable.
   ok(
     (await alice.page.locator(".plane-dot.is-me").count()) === 0 &&
       (await alice.page.locator(".plane-marker").count()) === 1,
@@ -340,6 +444,7 @@ const tie = [];
   const page = tie[2].page;
   await page.reload();
   await settle(page);
+  await settleAnimations(page);
 
   ok((await page.locator(".plane-dot").count()) === 5, "every dot is drawn");
   ok((await page.locator(".plane-cluster").count()) === 1, "the tie gets one cluster ring");
@@ -348,6 +453,41 @@ const tie = [];
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
   ok(overflow === 0, "the page does not scroll sideways at 390px", `overflow ${overflow}px`);
+
+  // PR #3: labels live inside the square so the square can stay full-width on
+  // a phone. Outside labels take their width out of the square; 16px padding
+  // either side of a 390px viewport leaves 358px. A 3-column outside layout
+  // lands well under 300.
+  const boardGeom = await page.evaluate(() => {
+    const square = document.querySelector(".plane-square").getBoundingClientRect();
+    return { w: Math.round(square.width), vw: document.documentElement.clientWidth };
+  });
+  ok(
+    boardGeom.w >= boardGeom.vw - 40,
+    "the board stays full-width on a phone",
+    `${boardGeom.w}px in a ${boardGeom.vw}px viewport`,
+  );
+  const axisEscaped = await escapedLabels(".plane-square", ".plane-label")(page);
+  ok(axisEscaped.length === 0, "axis labels sit inside the square", axisEscaped.join(", "));
+  const axisEdges = await page.evaluate(() => {
+    const box = document.querySelector(".plane-square").getBoundingClientRect();
+    const mid = (edge) => {
+      const r = document.querySelector(`.plane-label-${edge}`).getBoundingClientRect();
+      return { x: (r.left + r.right) / 2 - box.left, y: (r.top + r.bottom) / 2 - box.top };
+    };
+    return {
+      top: mid("top"),
+      bottom: mid("bottom"),
+      left: mid("left"),
+      right: mid("right"),
+      w: box.width,
+      h: box.height,
+    };
+  });
+  ok(axisEdges.top.y < axisEdges.h * 0.25, "the top axis label sits on the top edge");
+  ok(axisEdges.bottom.y > axisEdges.h * 0.75, "the bottom axis label sits on the bottom edge");
+  ok(axisEdges.left.x < axisEdges.w * 0.25, "the left axis label sits on the left edge");
+  ok(axisEdges.right.x > axisEdges.w * 0.75, "the right axis label sits on the right edge");
 
   const clipped = await page.evaluate(() => {
     const square = document.querySelector(".plane-square");
@@ -391,6 +531,70 @@ const tie = [];
       .filter((b) => b.h < 44),
   );
   ok(small.length === 0, "every visible button clears a 44px tap target", JSON.stringify(small));
+}
+
+// ───────────────────────────────────────────────────── colours
+// After the tie, deliberately: that test counts every dot on the board, and a
+// player created here would be one more than it expects.
+group("Player colours");
+{
+  const { ctx, page } = await person();
+  await setInitials(page, "TEA", "teal");
+  await placeAt(page, -0.3, 0.4);
+
+  ok(
+    (await page.locator('.plane-dot.is-me[data-color="teal"]').count()) === 1,
+    "the colour you picked is the colour your dot is drawn in",
+  );
+
+  // Ownership has to survive everyone choosing their own colour, so it is
+  // carried by the halo rather than by hue. If this regresses, "which one is
+  // me" silently stops being answerable on a board where someone else picked
+  // your colour too.
+  const halo = await page.evaluate(() => {
+    const mark = document.querySelector(".plane-dot.is-me .plane-dot-mark");
+    return getComputedStyle(mark).boxShadow;
+  });
+  ok(halo !== "none" && halo.length > 0, "your own dot is ringed, not just tinted", halo);
+
+  // Every palette entry has to be legible on both grounds; the dark values are
+  // re-derived rather than reused, and nothing else checks that they exist.
+  const resolved = await page.evaluate(() => {
+    const root = getComputedStyle(document.documentElement);
+    return ["clay", "moss", "plum", "sky", "ochre", "teal", "rose", "slate"].map((n) => [
+      n,
+      root.getPropertyValue(`--c-${n}`).trim(),
+    ]);
+  });
+  ok(
+    resolved.every(([, value]) => /^#[0-9a-f]{6}$/i.test(value)),
+    "all eight palette tokens resolve",
+    JSON.stringify(resolved),
+  );
+
+  const darkCtx = await browser.newContext({ colorScheme: "dark" });
+  const darkPage = await darkCtx.newPage();
+  await darkPage.goto(`${BASE}/`);
+  const darkResolved = await darkPage.evaluate(() => {
+    const root = getComputedStyle(document.documentElement);
+    return ["clay", "moss", "plum", "sky", "ochre", "teal", "rose", "slate"].map((n) =>
+      root.getPropertyValue(`--c-${n}`).trim(),
+    );
+  });
+  ok(
+    darkResolved.every((v, i) => /^#[0-9a-f]{6}$/i.test(v) && v !== resolved[i][1]),
+    "…and every one of them is re-derived for dark rather than reused",
+    JSON.stringify(darkResolved),
+  );
+  await darkCtx.close();
+
+  await page.getByRole("button", { name: "show as list" }).click();
+  ok(
+    (await page.locator('tr.is-me .plot-chip[data-color="teal"]').count()) === 1,
+    "the list view carries the same colour chip as the board",
+  );
+
+  await ctx.close();
 }
 
 // ─────────────────────────────────────────────── keyboard and contrast
@@ -496,7 +700,7 @@ group("The share sheet");
   const commit = async () => {
     const box = await page.locator(".plane-square").boundingBox();
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 3);
-    await page.getByRole("button", { name: /Place me here|Move my dot here/ }).click();
+    await page.getByRole("button", { name: /Place me here|Move me here/ }).click();
     await settle(page);
   };
 
@@ -532,7 +736,7 @@ group("The share sheet");
   ok(true, "'not now' closes it");
 
   // Moving your dot is not a moment worth interrupting.
-  await page.getByRole("button", { name: "Move my dot" }).click();
+  await page.getByRole("button", { name: "Move me" }).click();
   await commit();
   ok(
     (await page.locator("dialog.sheet[open]").count()) === 0,
@@ -647,7 +851,7 @@ group("Ideas");
   const page = alice.page;
   await page.goto(`${BASE}/ideas`);
   await hydrated(page, "form.stack");
-  ok((await page.getByText("You haven't sent any yet").count()) > 0, "ideas has an empty state");
+  ok((await page.getByText("Nothing from you yet").count()) > 0, "ideas has an empty state");
 
   const inputs = page.locator("form.stack .input");
   await inputs.nth(0).fill("indoors");
@@ -819,7 +1023,7 @@ group("An empty board");
   const { ctx, page } = await person(390);
   await setInitials(page, "ONE");
   ok(
-    (await page.getByText("Nobody has plotted yet. Go first.").count()) > 0,
+    (await page.getByText("Nobody here yet. You'd be first.").count()) > 0,
     "an empty board says so plainly",
     await page.locator(".meta").first().textContent(),
   );
@@ -830,7 +1034,7 @@ group("An empty board");
 
   await placeAt(page, 0.1, 0.1);
   ok(
-    (await page.getByText("You're the first.").count()) > 0,
+    (await page.getByText("Just you, so far.").count()) > 0,
     "being the only dot reads as being first, not as \"1 person has plotted\"",
     await page.locator(".meta").first().textContent(),
   );
@@ -903,7 +1107,7 @@ group("Admin authorisation");
     // And prove it by effect, not just by response: nothing may be live now.
     await page.goto(`${BASE}/`);
     ok(
-      (await page.getByText("Nothing up yet").count()) > 0,
+      (await page.getByText("Between rounds").count()) > 0,
       "…the grid the admin took down stayed down",
     );
   }
