@@ -562,6 +562,69 @@ a {
   color: var(--ink-faint);
 }
 
+/* Intro and profile share a cell so Continue / Back cannot shift the title or
+   the schematic. The inactive pane is taken out of flow — otherwise the intro
+   would inherit the form's height and look like a hole under Continue. */
+.splash-stage {
+  position: relative;
+  display: grid;
+}
+
+.splash-pane {
+  grid-area: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.splash-pane:not(.is-active) {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+}
+
+.splash-pane.is-active {
+  position: relative;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .splash-pane.is-active {
+    animation: splash-pane-in 160ms ease-out;
+  }
+
+  .splash-stage[data-dir="back"] .splash-pane.is-active {
+    animation-name: splash-pane-in-back;
+  }
+}
+
+@keyframes splash-pane-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes splash-pane-in-back {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* ---------- sharing ---------- */
 
 /* A native <dialog>: showModal() supplies the focus trap, Escape, the inert

@@ -83,8 +83,9 @@ app/
 components/
   Plane.tsx             the square: axes, dots, collision fan-out, drag, arrow keys
   Board.tsx             marker state + commit (the only substantial client component)
-  Onboarding.tsx        initials + colour, on the splash, once ever
-  Splash.tsx            the first-timer page: this week's question + the form
+  Onboarding.tsx        initials + colour, once ever, after Continue
+  Splash.tsx            the first-timer page: intro, then who you are
+  SplashFlow.tsx        Continue / Back between those two screens
   ShareButton.tsx       share sheet → clipboard → visible URL
   ShareDialog.tsx       the bottom sheet, on your first placement only
   ArchivedBoard.tsx  IdeaForm.tsx  AdminControls.tsx  Nav.tsx
