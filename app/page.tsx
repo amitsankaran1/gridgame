@@ -1,5 +1,5 @@
-import InitialsEntry from "@/components/InitialsEntry";
 import Board from "@/components/Board";
+import Splash from "@/components/Splash";
 import { activeGrid, boardFor } from "@/lib/queries";
 import { getPlayer } from "@/lib/session";
 
@@ -20,15 +20,9 @@ export default async function Home() {
     );
   }
 
-  if (!player?.initials) {
-    return (
-      <div className="stack">
-        <h1>{grid.title ?? "This week"}</h1>
-        <p className="meta">Three initials, then you can place yourself.</p>
-        <InitialsEntry cta="Continue" />
-      </div>
-    );
-  }
+  // No initials yet means a first-timer, so this is where the explanation goes.
+  // Setting them is what retires it — there is no dismissal state to keep.
+  if (!player?.initials) return <Splash grid={grid} />;
 
   const board = await boardFor(grid.id, player.id);
   if (!board) return null;
