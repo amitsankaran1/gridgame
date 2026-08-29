@@ -74,9 +74,9 @@ const hydrated = (page, selector = "form") =>
 /**
  * Walk a fresh player through onboarding: initials and a colour, on the same
  * screen as the week's question. `color` picks a specific swatch so a test can
- * assert on it; leaving it off keeps whatever the form randomly pre-selected.
+ * assert on it; the default keeps older call sites explicit about selecting one.
  */
-async function setInitials(page, initials, color) {
+async function setInitials(page, initials, color = "slate") {
   await page.goto(`${BASE}/`);
   await hydrated(page, "form.initials-form");
   await page.fill("#initials", initials);
@@ -242,6 +242,20 @@ group("The splash");
   );
   ok(await page.locator("#initials").isVisible(), "the initials field is on the same screen");
   ok((await page.locator(".swatch").count()) === 8, "…and so is the colour picker");
+  ok(
+    await page.locator('form.initials-form button[type="submit"]').isDisabled(),
+    "the form stays disabled until a colour is chosen",
+  );
+  await page.locator('.swatch[data-color="plum"]').click();
+  await page.locator('.swatch[data-color="slate"]').click();
+  const picked = await page.locator('.swatch.is-selected').evaluateAll((swatches) =>
+    swatches.map((swatch) => swatch.getAttribute("data-color")),
+  );
+  ok(
+    picked.length === 1 && picked[0] === "slate",
+    "changing colour leaves exactly the new swatch selected",
+    JSON.stringify(picked),
+  );
   ok(
     (await page.getByRole("button", { name: "I'm in" }).count()) === 0,
     "there is no second screen to click through",

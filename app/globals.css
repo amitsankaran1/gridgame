@@ -741,6 +741,7 @@ textarea {
 /* 44px of tap target around a 20px dot. The target is padding rather than a
    bigger circle so the swatches still read as a row of dots, not of buttons. */
 .swatch {
+  position: relative;
   width: 44px;
   height: 44px;
   display: grid;
@@ -750,6 +751,18 @@ textarea {
   background: none;
   border-radius: var(--radius);
   cursor: pointer;
+}
+
+.swatch-input {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  opacity: 0;
+}
+
+.swatch:has(.swatch-input:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .swatch::before {
@@ -763,7 +776,7 @@ textarea {
 
 /* The selected swatch gets the same halo the board uses for your own dot, so
    the thing you pick here is visibly the thing you become out there. */
-.swatch[aria-pressed="true"]::before {
+.swatch.is-selected::before {
   box-shadow:
     0 0 0 2px var(--paper),
     0 0 0 3.5px var(--dot);

@@ -18,16 +18,16 @@ const PENDING_CAP = 5;
 
 /**
  * Initials and colour land together because onboarding asks for them on one
- * screen. Colour is optional — someone who skips the swatches gets the stable
- * hash of their initials from colorFor() instead of nothing.
+ * screen. A profile is only complete once both have been chosen.
  */
 export async function setProfile(rawInitials: string, rawColor: unknown): Promise<ActionResult> {
   const initials = parseInitials(rawInitials);
   if (!initials) return { error: "Initials must be three letters or numbers." };
   const color = parseColor(rawColor);
+  if (!color) return { error: "Choose a colour." };
 
   const player = await getOrCreatePlayer();
-  await queryOne(`update players set initials = $2, color = coalesce($3, color) where id = $1`, [
+  await queryOne(`update players set initials = $2, color = $3 where id = $1`, [
     player.id,
     initials,
     color,

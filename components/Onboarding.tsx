@@ -14,17 +14,15 @@ import { PLAYER_COLORS, type PlayerColor } from "@/lib/colors";
  */
 export default function Onboarding() {
   const [initials, setInitials] = useState("");
-  const [color, setColor] = useState<PlayerColor>(
-    () => PLAYER_COLORS[Math.floor(Math.random() * PLAYER_COLORS.length)].name,
-  );
+  const [color, setColor] = useState<PlayerColor | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const valid = /^[A-Z0-9]{3}$/.test(initials);
+  const valid = /^[A-Z0-9]{3}$/.test(initials) && color !== null;
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!valid) return;
+    if (!valid || !color) return;
     setError(null);
     startTransition(async () => {
       const result = await setProfile(initials, color);
@@ -67,28 +65,36 @@ export default function Onboarding() {
         <legend className="field-label">Your colour</legend>
         <div className="swatches">
           {PLAYER_COLORS.map((option) => (
-            <button
+            <label
               key={option.name}
-              type="button"
-              className="swatch"
+              className={`swatch${color === option.name ? " is-selected" : ""}`}
               data-color={option.name}
-              aria-pressed={color === option.name}
-              aria-label={option.label}
-              onClick={() => setColor(option.name)}
-            />
+            >
+              <input
+                className="swatch-input"
+                type="radio"
+                name="color"
+                value={option.name}
+                checked={color === option.name}
+                onChange={() => setColor(option.name)}
+                aria-label={option.label}
+              />
+            </label>
           ))}
         </div>
       </fieldset>
 
       {/* The dot you are about to become, at the size it will actually be
           drawn, wearing the halo that marks it as yours out on the board. */}
-      <p className="identity-preview" data-color={color}>
-        <span className="identity-preview-dot" />
-        <span>
-          You&apos;ll show up as{" "}
-          <span className="identity-preview-initials">{initials || "ABC"}</span>
-        </span>
-      </p>
+      {color ? (
+        <p className="identity-preview" data-color={color}>
+          <span className="identity-preview-dot" />
+          <span>
+            You&apos;ll show up as{" "}
+            <span className="identity-preview-initials">{initials || "ABC"}</span>
+          </span>
+        </p>
+      ) : null}
 
       <div className="row">
         <button className="button" type="submit" disabled={!valid || pending}>
