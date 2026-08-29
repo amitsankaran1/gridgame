@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react";
 import { placeDot } from "@/app/actions";
 import Plane, { PlotList } from "@/components/Plane";
+import ShareButton from "@/components/ShareButton";
+import ShareDialog from "@/components/ShareDialog";
 import type { PlayerColor } from "@/lib/colors";
 import type { Grid, PublicPlot } from "@/lib/types";
 
@@ -42,6 +44,7 @@ export default function Board({
   const [moving, setMoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showList, setShowList] = useState(false);
+  const [justJoined, setJustJoined] = useState(false);
   const [pending, startTransition] = useTransition();
   /**
    * True only for the render right after your first commit — the moment the
@@ -56,16 +59,24 @@ export default function Board({
 
   function commit() {
     setError(null);
+    // Read it before the action: the revalidation flips `committed` underneath
+    // us, so afterwards there is no way to tell a first placement from a move.
     const firstTime = !committed;
     startTransition(async () => {
       const result = await placeDot(marker.x, marker.y);
-      if (result.error) setError(result.error);
-      else {
-        setMoving(false);
-        if (firstTime) setRevealing(true);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      setMoving(false);
+      if (firstTime) {
+        setRevealing(true);
+        setJustJoined(true);
       }
     });
   }
+
+  const question = `${grid.x_left} ↔ ${grid.x_right}`;
 
   return (
     <div className="stack">
@@ -124,6 +135,9 @@ export default function Board({
           >
             Move me
           </button>
+          {/* Only here: sharing is offered once you have skin in the game, and
+              never while the board is still locked to you. */}
+          <ShareButton question={question} />
           <button className="button link" onClick={() => setShowList((v) => !v)}>
             {showList ? "hide list" : "show as list"}
           </button>
@@ -133,6 +147,12 @@ export default function Board({
       {error && <p className="error">{error}</p>}
 
       {committed && showList && <PlotList plots={plots} />}
+
+      <ShareDialog
+        open={justJoined}
+        onClose={() => setJustJoined(false)}
+        question={question}
+      />
     </div>
   );
 }

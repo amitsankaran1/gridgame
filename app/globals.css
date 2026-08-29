@@ -190,6 +190,11 @@ a {
      would be a dead patch you could not plot on. */
   pointer-events: none;
   transition: opacity 140ms ease;
+  /* A label is capped at 40 characters but not at 40 *words* — one long
+     unbreakable run ignores the max-width below. Outside the square that
+     overhung it; inside, the square's overflow clips it instead, which is no
+     more readable. */
+  overflow-wrap: anywhere;
 }
 
 /* A mark has landed on this label. Fade rather than hide: opacity leaves the
@@ -433,6 +438,162 @@ a {
   .plane-cluster[data-entrance] {
     animation: none;
   }
+}
+
+/* ---------- splash ---------- */
+
+/* Same structure as .plane, deliberately: it is a small rehearsal of the thing
+   on the next screen, so the labels sit where they will sit for real. Narrow,
+   because this is an illustration and the real square is the payoff. */
+.splash-plane {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 220px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+/* The splash keeps its labels OUTSIDE its diagram — it is a static picture of
+   the idea, not the board, so nothing can land on a label and there is no
+   reason to move them in. It used to borrow .plane-label for this, but that
+   class now means "absolutely positioned against an edge of the square", so
+   the two need separate names. */
+.splash-label {
+  color: var(--ink-soft);
+  font-size: 13px;
+  /* A label is capped at 40 characters but not at 40 *words* — one long
+     unbreakable run would overhang the diagram. */
+  overflow-wrap: anywhere;
+}
+
+.splash-x-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.splash-label-x {
+  max-width: 46%;
+  text-align: left;
+}
+
+.splash-x-labels .splash-label-x:last-child {
+  text-align: right;
+}
+
+.splash-square {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.splash-frame {
+  fill: var(--paper);
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.splash-grid line {
+  stroke: var(--line-faint);
+  stroke-width: 1;
+}
+
+.splash-axes line {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+/* Everyone already on the board, as you can currently see them: not at all.
+   This is the reveal gate drawn as a picture. */
+.splash-hidden circle {
+  fill: var(--dot-them);
+  opacity: 0.55;
+  filter: blur(2.5px);
+}
+
+.splash-you {
+  fill: var(--dot-me);
+}
+
+/* Inside the SVG, so it scales with the diagram rather than with the page. */
+.splash-you-label {
+  fill: var(--dot-me);
+  font-size: 7px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+}
+
+.splash-steps {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+.splash-steps::marker,
+.splash-steps li::marker {
+  color: var(--ink-faint);
+}
+
+/* ---------- sharing ---------- */
+
+/* A native <dialog>: showModal() supplies the focus trap, Escape, the inert
+   background and this ::backdrop.
+
+   Pinned to the bottom rather than centred, and the backdrop kept light. This
+   opens on the one moment the whole app is built around — the board revealing
+   itself — and a centred sheet lands squarely on top of it while the copy
+   claims everyone is visible now. From down here the reveal still reads. */
+.sheet {
+  margin: auto auto 0;
+  width: min(480px, 100vw);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.sheet::backdrop {
+  background: rgba(10, 12, 15, 0.32);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sheet[open] {
+    animation: sheet-up 180ms ease-out;
+  }
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+}
+
+.sheet-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 20px 28px;
+}
+
+.sheet-body h2 {
+  font-size: 17px;
+}
+
+/* The manual fallback, for a browser with neither a share sheet nor clipboard
+   access. Full width so it wraps onto its own line rather than crushing the
+   buttons beside it. */
+.share-url {
+  flex-basis: 100%;
+  font-size: 13px;
 }
 
 /* ---------- forms ---------- */

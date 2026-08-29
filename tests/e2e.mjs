@@ -40,7 +40,11 @@ const browser = await chromium.launch({ executablePath: process.env.CHROME });
 
 /** A fresh browser context is a fresh person: no cookie, so no player row. */
 async function person(width = 900) {
-  const ctx = await browser.newContext({ viewport: { width, height: 1000 } });
+  const ctx = await browser.newContext({
+    viewport: { width, height: 1000 },
+    // The share fallback copies to the clipboard, and the test reads it back.
+    permissions: ["clipboard-read", "clipboard-write"],
+  });
   const page = await ctx.newPage();
   page.on("pageerror", (err) => {
     failures += 1;
@@ -95,6 +99,17 @@ const settleAnimations = (page) =>
     Promise.all(document.getAnimations().map((a) => a.finished.catch(() => {}))),
   );
 
+/**
+ * The share sheet opens on a first placement and is modal, so anything behind
+ * it is unclickable until it goes. Every flow that places a dot and then keeps
+ * using the board goes through here.
+ */
+async function dismissSheet(page) {
+  if ((await page.locator("dialog.sheet[open]").count()) === 0) return;
+  await page.getByRole("button", { name: "not now" }).click();
+  await page.waitForFunction(() => !document.querySelector("dialog.sheet[open]"));
+}
+
 /** Drag the marker to a normalised -1…1 point and commit it. */
 async function placeAt(page, x, y) {
   const box = await page.locator(".plane-square").boundingBox();
@@ -108,6 +123,7 @@ async function placeAt(page, x, y) {
   await page.getByRole("button", { name: /Place me here|Move me here/ }).click();
   await settle(page);
   await settleAnimations(page);
+  await dismissSheet(page);
   return { px, py };
 }
 
@@ -154,6 +170,93 @@ const admin = await person();
   ok(true, "a typed grid goes live");
 }
 
+// ──────────────────────────────────────── the share preview image
+group("The share preview image");
+{
+  const { ctx, page } = await person();
+  await page.goto(`${BASE}/`);
+
+  // An unfurler reads the tag, not the route, and a relative og:image is
+  // ignored by every one of them — which is how a share preview silently
+  // becomes blank.
+  const og = await page.locator('meta[property="og:image"]').getAttribute("content");
+  ok(
+    typeof og === "string" && /^https?:\/\//.test(og),
+    "og:image is an absolute URL",
+    og ?? "(missing)",
+  );
+  ok(
+    (await page.locator('meta[name="twitter:card"]').getAttribute("content")) ===
+      "summary_large_image",
+    "…and twitter is told to render it large",
+  );
+
+  const res = await ctx.request.get(`${BASE}/opengraph-image`);
+  ok(res.status() === 200, "the image renders", `status ${res.status()}`);
+  ok(
+    res.headers()["content-type"] === "image/png",
+    "…as a png",
+    res.headers()["content-type"],
+  );
+  const bytes = Buffer.from(await res.body());
+  // PNG magic, then width and height from the IHDR chunk.
+  const width = bytes.readUInt32BE(16);
+  const height = bytes.readUInt32BE(20);
+  ok(
+    bytes.subarray(0, 8).toString("hex") === "89504e470d0a1a0a",
+    "…that is really a png, not an error page",
+  );
+  ok(width === 1200 && height === 630, "…at 1200x630", `${width}x${height}`);
+
+  await ctx.close();
+}
+
+// ────────────────────────────────────────────────────────────── splash
+group("The splash");
+{
+  const { ctx, page } = await person(390);
+  await page.goto(`${BASE}/`);
+  ok(await page.locator(".splash-plane").isVisible(), "a first-timer gets the explainer");
+  ok((await page.locator(".splash-steps li").count()) === 3, "…with the three steps");
+  ok(
+    (await page.getByText("high maintenance").count()) > 0 &&
+      (await page.getByText("not chill").count()) > 0,
+    "…and this week's real axis labels, so you know what you're answering",
+  );
+  ok(
+    await page.getByRole("button", { name: "I'm in" }).isVisible(),
+    "the welcome screen asks you in before asking for initials",
+  );
+  ok((await page.locator("#initials").count()) === 0, "…and the initials field is not on it yet");
+  ok(
+    (await page.getByRole("link", { name: "Submit" }).count()) === 1 &&
+      (await page.getByRole("link", { name: "Ideas" }).count()) === 0,
+    "the nav says Submit, not Ideas",
+  );
+  ok(
+    (await page.getByRole("link", { name: "Submit" }).getAttribute("href")) === "/ideas",
+    "…and still points at /ideas",
+  );
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  ok(overflow === 0, "it doesn't scroll sideways at 390px", `overflow ${overflow}px`);
+
+  // The diagram is decoration — the steps carry the meaning.
+  ok(
+    (await page.locator(".splash-square").getAttribute("aria-hidden")) === "true",
+    "the diagram is hidden from screen readers rather than read out as noise",
+  );
+
+  // Setting initials is the only thing that retires it.
+  await setInitials(page, "SPL");
+  ok((await page.locator(".splash-plane").count()) === 0, "it is gone once you have initials");
+  await page.reload();
+  ok((await page.locator(".splash-plane").count()) === 0, "…and stays gone");
+  await ctx.close();
+}
+
 // ───────────────────────────────────────────────── the reveal gate
 group("The reveal gate");
 const alice = await person();
@@ -194,6 +297,20 @@ const bob = await person();
     (await alice.page.getByText(/One person is already out there/).count()) > 0,
     "the locked board still reports the headcount",
   );
+
+  // The splash renders for people who have not committed, so it is behind the
+  // same gate. Its diagram is schematic — if it ever became real data, this is
+  // where that would show up.
+  const newcomer = await person();
+  const splashHtml = await (await newcomer.ctx.request.get(`${BASE}/`)).text();
+  await newcomer.page.goto(`${BASE}/`);
+  ok(await newcomer.page.locator(".splash-plane").isVisible(), "a newcomer sees the splash");
+  ok(!splashHtml.includes("BBB"), "…and it does not leak a plotted player's initials");
+  ok(
+    (await newcomer.page.locator(".plane-dot").count()) === 0,
+    "…and draws no real dots",
+  );
+  await newcomer.ctx.close();
 }
 
 // ─────────────────────────────────────────────────── placing and moving
@@ -293,10 +410,14 @@ const tie = [];
 
   const small = await page.evaluate(() =>
     [...document.querySelectorAll(".button")]
+      // A closed <dialog> is display:none, so the share sheet's buttons measure
+      // zero while it is shut. Nothing you cannot tap needs a tap target — the
+      // sheet's own buttons are measured while it is open instead.
+      .filter((el) => el.checkVisibility())
       .map((el) => ({ label: el.textContent.trim(), h: Math.round(el.getBoundingClientRect().height) }))
       .filter((b) => b.h < 44),
   );
-  ok(small.length === 0, "every button clears a 44px tap target", JSON.stringify(small));
+  ok(small.length === 0, "every visible button clears a 44px tap target", JSON.stringify(small));
 }
 
 // ───────────────────────────────────────────────────── colours
@@ -399,6 +520,7 @@ group("Reachable without a pointer");
   // …and the whole thing round-trips: commit by keyboard, read it back.
   await page.getByRole("button", { name: "Place me here" }).click();
   await settle(page);
+  await dismissSheet(page);
   await page.getByRole("button", { name: "show as list" }).click();
   const row = page.locator("tr.is-me");
   const x = Number(await row.locator("td").nth(1).textContent());
@@ -450,6 +572,162 @@ group("Dark mode");
   ok(
     (await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).includes("dark"),
     "color-scheme is declared, so form controls follow too",
+  );
+  await ctx.close();
+}
+
+// ─────────────────────────────────────────────── the share sheet
+group("The share sheet");
+{
+  const { ctx, page } = await person(390);
+  await setInitials(page, "SHT");
+
+  // Place by hand, not through placeAt — that helper dismisses the sheet, and
+  // the sheet is what this group is about.
+  const commit = async () => {
+    const box = await page.locator(".plane-square").boundingBox();
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 3);
+    await page.getByRole("button", { name: /Place me here|Move me here/ }).click();
+    await settle(page);
+  };
+
+  await commit();
+  const sheet = page.locator("dialog.sheet[open]");
+  ok((await sheet.count()) === 1, "placing yourself opens the share sheet");
+  ok(
+    (await sheet.getByRole("button", { name: "Share" }).count()) === 1,
+    "…with a share button in it",
+  );
+
+  // It opens on the reveal, so it must not sit on top of the reveal.
+  const clear = await page.evaluate(() => {
+    const s = document.querySelector("dialog.sheet").getBoundingClientRect();
+    const sq = document.querySelector(".plane-square").getBoundingClientRect();
+    return sq.bottom <= s.top + 1;
+  });
+  ok(clear, "…and does not cover the board it just revealed");
+
+  const smallInSheet = await page.evaluate(() =>
+    [...document.querySelectorAll("dialog.sheet .button")]
+      .map((el) => ({ label: el.textContent.trim(), h: Math.round(el.getBoundingClientRect().height) }))
+      .filter((b) => b.h < 44),
+  );
+  ok(
+    smallInSheet.length === 0,
+    "…and its buttons clear a 44px tap target while it is open",
+    JSON.stringify(smallInSheet),
+  );
+
+  await page.getByRole("button", { name: "not now" }).click();
+  await page.waitForFunction(() => !document.querySelector("dialog.sheet[open]"));
+  ok(true, "'not now' closes it");
+
+  // Moving your dot is not a moment worth interrupting.
+  await page.getByRole("button", { name: "Move me" }).click();
+  await commit();
+  ok(
+    (await page.locator("dialog.sheet[open]").count()) === 0,
+    "moving your dot afterwards does not reopen it",
+  );
+
+  // Escape is free with <dialog>, but only if showModal() was used.
+  const { ctx: ctx2, page: p2 } = await person(390);
+  await setInitials(p2, "ESC");
+  const box = await p2.locator(".plane-square").boundingBox();
+  await p2.mouse.click(box.x + box.width / 2, box.y + box.height / 3);
+  await p2.getByRole("button", { name: "Place me here" }).click();
+  await settle(p2);
+  await p2.waitForSelector("dialog.sheet[open]");
+  await p2.keyboard.press("Escape");
+  await p2.waitForFunction(() => !document.querySelector("dialog.sheet[open]"));
+  ok(true, "Escape closes it");
+  ok(
+    (await p2.evaluate(() => document.querySelector("dialog.sheet").matches(":modal"))) === false,
+    "…and it is a real modal, so focus was trapped while open",
+  );
+  await ctx2.close();
+  await ctx.close();
+}
+
+// ────────────────────────────────────────────────────────────── sharing
+group("Sharing");
+{
+  const { ctx, page } = await person(390);
+  await page.goto(`${BASE}/`);
+  ok(
+    (await page.getByRole("button", { name: "Share" }).count()) === 0,
+    "no share button before you have initials",
+  );
+
+  await setInitials(page, "SHR");
+  ok(
+    (await page.getByRole("button", { name: "Share" }).count()) === 0,
+    "…nor while the board is still locked to you",
+  );
+
+  await placeAt(page, -0.3, 0.4);
+  const share = page.getByRole("button", { name: "Share" });
+  ok((await share.count()) === 1, "it appears once you have placed yourself");
+  ok(!(await share.isDisabled()), "…and is enabled once the URL is known");
+
+  // Tier one: the native share sheet. Stub it, because a real one would open an
+  // OS dialog the browser can't dismiss — what matters is the payload.
+  const stubShare = (fn) =>
+    page.evaluate((body) => {
+      Object.defineProperty(navigator, "share", {
+        value: body === null ? undefined : eval(body),
+        configurable: true,
+        writable: true,
+      });
+    }, fn);
+
+  await page.evaluate(() => {
+    window.__shared = null;
+  });
+  await stubShare(`(data) => { window.__shared = data; return Promise.resolve(); }`);
+  await share.click();
+  const shared = await page.evaluate(() => window.__shared);
+  ok(shared !== null, "clicking it opens the share sheet where there is one");
+  ok(shared?.url === `${BASE}/`, "…with the board's own URL, no query string", shared?.url);
+  ok(
+    typeof shared?.text === "string" && shared.text.includes("chill"),
+    "…and this week's question in the text",
+    shared?.text,
+  );
+
+  // Dismissing the sheet is a choice, not a failure: it must not silently copy.
+  await page.evaluate(async () => {
+    await navigator.clipboard.writeText("SENTINEL");
+  });
+  await stubShare(
+    `() => Promise.reject(Object.assign(new Error("cancelled"), { name: "AbortError" }))`,
+  );
+  await share.click();
+  await page.waitForTimeout(200);
+  ok(
+    (await page.evaluate(() => navigator.clipboard.readText())) === "SENTINEL",
+    "dismissing the sheet does not copy the link behind your back",
+  );
+
+  // Tier two: no share sheet, so fall back to the clipboard.
+  await stubShare(null);
+  await share.click();
+  await page.waitForSelector("text=Link copied");
+  ok(
+    (await page.evaluate(() => navigator.clipboard.readText())) === `${BASE}/`,
+    "without a share sheet it copies the link instead",
+    await page.evaluate(() => navigator.clipboard.readText()),
+  );
+
+  // Tier three: neither works — the link still has to be gettable.
+  await page.evaluate(() => {
+    navigator.clipboard.writeText = () => Promise.reject(new Error("blocked"));
+  });
+  await share.click();
+  await page.waitForSelector(".share-url");
+  ok(
+    (await page.locator(".share-url").inputValue()) === `${BASE}/`,
+    "with neither, the URL is shown as selectable text rather than a dead button",
   );
   await ctx.close();
 }
@@ -556,6 +834,9 @@ group("Promote an idea, archive the old grid");
   // its own people, so this is read, not assumed.
   await alice.page.goto(`${BASE}/`);
   const placedThisGrid = await alice.page.locator(".plane-dot").count();
+  // The preview image has to follow the live grid, or a group chat gets last
+  // week's question. This promotion is the only grid change in the run.
+  const ogBefore = (await (await alice.ctx.request.get(`${BASE}/opengraph-image`)).body()).length;
 
   await admin.page.goto(`${BASE}/admin`);
   await hydrated(admin.page, "form.stack");
@@ -612,6 +893,39 @@ group("Promote an idea, archive the old grid");
     (await alice.page.getByText("hidden until you commit").count()) > 0,
     "…and says so",
   );
+
+  const ogAfter = (await (await alice.ctx.request.get(`${BASE}/opengraph-image`)).body()).length;
+  ok(
+    ogAfter !== ogBefore,
+    "the share preview image is redrawn for the new grid",
+    `${ogBefore} → ${ogAfter} bytes`,
+  );
+}
+
+// ──────────────────────────────────────────────── an empty board
+group("An empty board");
+{
+  // "0 people are already on the board — hidden until you place yourself"
+  // promises a crowd that isn't there. This runs before anyone has plotted.
+  const { ctx, page } = await person(390);
+  await setInitials(page, "ONE");
+  ok(
+    (await page.getByText("Nobody here yet. You'd be first.").count()) > 0,
+    "an empty board says so plainly",
+    await page.locator(".meta").first().textContent(),
+  );
+  ok(
+    (await page.getByText(/^0 people/).count()) === 0,
+    "…and never says \"0 people are already on the board\"",
+  );
+
+  await placeAt(page, 0.1, 0.1);
+  ok(
+    (await page.getByText("Just you, so far.").count()) > 0,
+    "being the only dot reads as being first, not as \"1 person has plotted\"",
+    await page.locator(".meta").first().textContent(),
+  );
+  await ctx.close();
 }
 
 // ──────────────────────────────────────────────────────── bad input

@@ -2,23 +2,18 @@
 
 import { useState, useTransition } from "react";
 import { setProfile } from "@/app/actions";
-import Plane from "@/components/Plane";
+import Splash from "@/components/Splash";
 import { PLAYER_COLORS, type PlayerColor } from "@/lib/colors";
 import type { Grid } from "@/lib/types";
 
 /**
  * What a brand new player walks through, once ever.
  *
- * Two screens, in this order on purpose: the week's question first, identity
- * second. Being asked to name yourself before you know what you have walked
- * into is the sterile version. Seeing that the house is arguing about
- * chill ↔ not chill, and *then* being asked who you are, is the warm one.
- *
- * There is no third "how it works" screen. The drag instructions already live
- * under the square where the drag happens, and the reveal gate is explained on
- * the board itself — teaching either one on a screen of its own would just be
- * another tap between someone and their first dot, which the project decided
- * against (see "Identity is a cookie" in backlog.md).
+ * Two screens, in this order on purpose: the week's question first (the splash
+ * schematic, so a newcomer never sees real dots), identity second. Being asked
+ * to name yourself before you know what you have walked into is the sterile
+ * version. Seeing that the house is arguing about chill ↔ not chill, and *then*
+ * being asked who you are, is the warm one.
  *
  * None of this needs persisting. `app/page.tsx` already branches on whether you
  * have initials, so having them *is* the record that you have been here — a
@@ -48,18 +43,10 @@ export default function Onboarding({ grid }: { grid: Grid }) {
   if (step === "welcome") {
     return (
       <div className="stack">
-        <div>
-          <h1>{grid.title ?? "This week"}</h1>
-          <p className="meta">
-            Everyone in the house puts themselves somewhere on this square. You
-            get one dot, and you can move it whenever you change your mind.
-          </p>
-        </div>
-
-        {/* The real plane with the real axes, just not yet touchable. The point
-            of leading with it is that the question is the fun part — you should
-            know what you are being asked before anyone asks your name. */}
-        <Plane grid={grid} />
+        {/* The splash is schematic on purpose: this page renders for people who
+            have not committed, so a real board here would be a hole in the
+            reveal gate. The week's labels are the real ones; the dots are not. */}
+        <Splash grid={grid} />
 
         <div className="row">
           <button className="button" onClick={() => setStep("identity")}>
