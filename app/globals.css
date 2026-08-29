@@ -145,37 +145,94 @@ a {
 
 /* ---------- the plane ---------- */
 
+/* Each label sits against the middle of the edge it names, so the axis it
+   belongs to is unmistakable: the x pair flanks the square at its horizontal
+   axis, the y pair caps it at the vertical one. */
 .plane {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr) minmax(0, auto);
+  grid-template-areas:
+    ".    top     ."
+    "left square  right"
+    ".    bottom  ."
+    "foot foot    foot";
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 8px;
   margin: 4px 0 20px;
 }
 
 .plane-label {
   color: var(--ink-soft);
-  font-size: 13px;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.25;
 }
 
 .plane-label-y {
   text-align: center;
 }
 
-.plane-x-labels {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
+.plane-label-top {
+  grid-area: top;
 }
 
+.plane-label-bottom {
+  grid-area: bottom;
+}
+
+/* Capped so a wordy label wraps instead of squeezing the square down to
+   nothing — the square is the thing people aim at. */
 .plane-label-x {
-  max-width: 46%;
+  max-width: 11ch;
 }
 
-.plane-x-labels .plane-label-x:last-child {
+.plane-label-left {
+  grid-area: left;
   text-align: right;
 }
 
+.plane-label-right {
+  grid-area: right;
+  text-align: left;
+}
+
+.plane-foot {
+  grid-area: foot;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* On a phone the side columns would eat more of the square than the placement
+   is worth, so the x pair drops back under it — still left and right, just on
+   one line. */
+@media (max-width: 560px) {
+  .plane {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "top    top"
+      "square square"
+      "left   right"
+      "bottom bottom"
+      "foot   foot";
+  }
+
+  .plane-label-x {
+    max-width: 100%;
+  }
+
+  .plane-label-left {
+    text-align: left;
+  }
+
+  .plane-label-right {
+    text-align: right;
+  }
+}
+
 .plane-square {
+  grid-area: square;
   position: relative;
   width: 100%;
   aspect-ratio: 1;

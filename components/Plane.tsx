@@ -191,7 +191,9 @@ export default function Plane({ grid, plots, marker, onMarkerChange }: Props) {
 
   return (
     <div className="plane">
-      <div className="plane-label plane-label-y">{grid.y_top}</div>
+      <div className="plane-label plane-label-y plane-label-top">{grid.y_top}</div>
+
+      <div className="plane-label plane-label-x plane-label-left">{grid.x_left}</div>
 
       <div
           ref={squareRef}
@@ -276,15 +278,12 @@ export default function Plane({ grid, plots, marker, onMarkerChange }: Props) {
           )}
       </div>
 
-      <div className="plane-x-labels">
-        <span className="plane-label plane-label-x">{grid.x_left}</span>
-        <span className="plane-label plane-label-x">{grid.x_right}</span>
-      </div>
+      <div className="plane-label plane-label-x plane-label-right">{grid.x_right}</div>
 
-      <div className="plane-label plane-label-y">{grid.y_bottom}</div>
+      <div className="plane-label plane-label-y plane-label-bottom">{grid.y_bottom}</div>
 
       {interactive && (
-        <>
+        <div className="plane-foot">
           {/* Where the marker actually is, in words. Sighted users get no read
               on this from the dot alone, and it is the only feedback a screen
               reader gets — so it is one element serving both, announced politely
@@ -296,7 +295,7 @@ export default function Plane({ grid, plots, marker, onMarkerChange }: Props) {
             Drag or tap the square, or focus it and use the arrow keys — hold
             shift for bigger steps.
           </p>
-        </>
+        </div>
       )}
     </div>
   );
