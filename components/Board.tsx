@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { placeDot } from "@/app/actions";
 import Plane, { PlotList } from "@/components/Plane";
+import ShareButton from "@/components/ShareButton";
 import type { Grid, PublicPlot } from "@/lib/types";
 
 type Point = { x: number; y: number };
@@ -85,6 +86,9 @@ export default function Board({
           <button className="button secondary" onClick={() => setMoving(true)}>
             Move my dot
           </button>
+          {/* Only here: sharing is offered once you have skin in the game, and
+              never while the board is still locked to you. */}
+          <ShareButton question={`${grid.x_left} ↔ ${grid.x_right}`} />
           <button className="button link" onClick={() => setShowList((v) => !v)}>
             {showList ? "hide list" : "show as list"}
           </button>

@@ -40,7 +40,11 @@ const browser = await chromium.launch({ executablePath: process.env.CHROME });
 
 /** A fresh browser context is a fresh person: no cookie, so no player row. */
 async function person(width = 900) {
-  const ctx = await browser.newContext({ viewport: { width, height: 1000 } });
+  const ctx = await browser.newContext({
+    viewport: { width, height: 1000 },
+    // The share fallback copies to the clipboard, and the test reads it back.
+    permissions: ["clipboard-read", "clipboard-write"],
+  });
   const page = await ctx.newPage();
   page.on("pageerror", (err) => {
     failures += 1;
@@ -133,6 +137,39 @@ const admin = await person();
   ok(true, "a typed grid goes live");
 }
 
+// ────────────────────────────────────────────────────────────── splash
+group("The splash");
+{
+  const { ctx, page } = await person(390);
+  await page.goto(`${BASE}/`);
+  ok(await page.locator(".splash-plane").isVisible(), "a first-timer gets the explainer");
+  ok((await page.locator(".splash-steps li").count()) === 3, "…with the three steps");
+  ok(
+    (await page.getByText("high maintenance").count()) > 0 &&
+      (await page.getByText("not chill").count()) > 0,
+    "…and this week's real axis labels, so you know what you're answering",
+  );
+  ok(await page.locator("#initials").isVisible(), "the initials field is on it");
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  ok(overflow === 0, "it doesn't scroll sideways at 390px", `overflow ${overflow}px`);
+
+  // The diagram is decoration — the steps carry the meaning.
+  ok(
+    (await page.locator(".splash-square").getAttribute("aria-hidden")) === "true",
+    "the diagram is hidden from screen readers rather than read out as noise",
+  );
+
+  // Setting initials is the only thing that retires it.
+  await setInitials(page, "SPL");
+  ok((await page.locator(".splash-plane").count()) === 0, "it is gone once you have initials");
+  await page.reload();
+  ok((await page.locator(".splash-plane").count()) === 0, "…and stays gone");
+  await ctx.close();
+}
+
 // ───────────────────────────────────────────────── the reveal gate
 group("The reveal gate");
 const alice = await person();
@@ -172,6 +209,20 @@ const bob = await person();
     (await alice.page.getByText(/1 person is already on the board/).count()) > 0,
     "the locked board still reports the headcount",
   );
+
+  // The splash renders for people who have not committed, so it is behind the
+  // same gate. Its diagram is schematic — if it ever became real data, this is
+  // where that would show up.
+  const newcomer = await person();
+  const splashHtml = await (await newcomer.ctx.request.get(`${BASE}/`)).text();
+  await newcomer.page.goto(`${BASE}/`);
+  ok(await newcomer.page.locator(".splash-plane").isVisible(), "a newcomer sees the splash");
+  ok(!splashHtml.includes("BBB"), "…and it does not leak a plotted player's initials");
+  ok(
+    (await newcomer.page.locator(".plane-dot").count()) === 0,
+    "…and draws no real dots",
+  );
+  await newcomer.ctx.close();
 }
 
 // ─────────────────────────────────────────────────── placing and moving
@@ -363,6 +414,89 @@ group("Dark mode");
   ok(
     (await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).includes("dark"),
     "color-scheme is declared, so form controls follow too",
+  );
+  await ctx.close();
+}
+
+// ────────────────────────────────────────────────────────────── sharing
+group("Sharing");
+{
+  const { ctx, page } = await person(390);
+  await page.goto(`${BASE}/`);
+  ok(
+    (await page.getByRole("button", { name: "Share" }).count()) === 0,
+    "no share button before you have initials",
+  );
+
+  await setInitials(page, "SHR");
+  ok(
+    (await page.getByRole("button", { name: "Share" }).count()) === 0,
+    "…nor while the board is still locked to you",
+  );
+
+  await placeAt(page, -0.3, 0.4);
+  const share = page.getByRole("button", { name: "Share" });
+  ok((await share.count()) === 1, "it appears once you have placed yourself");
+  ok(!(await share.isDisabled()), "…and is enabled once the URL is known");
+
+  // Tier one: the native share sheet. Stub it, because a real one would open an
+  // OS dialog the browser can't dismiss — what matters is the payload.
+  const stubShare = (fn) =>
+    page.evaluate((body) => {
+      Object.defineProperty(navigator, "share", {
+        value: body === null ? undefined : eval(body),
+        configurable: true,
+        writable: true,
+      });
+    }, fn);
+
+  await page.evaluate(() => {
+    window.__shared = null;
+  });
+  await stubShare(`(data) => { window.__shared = data; return Promise.resolve(); }`);
+  await share.click();
+  const shared = await page.evaluate(() => window.__shared);
+  ok(shared !== null, "clicking it opens the share sheet where there is one");
+  ok(shared?.url === `${BASE}/`, "…with the board's own URL, no query string", shared?.url);
+  ok(
+    typeof shared?.text === "string" && shared.text.includes("chill"),
+    "…and this week's question in the text",
+    shared?.text,
+  );
+
+  // Dismissing the sheet is a choice, not a failure: it must not silently copy.
+  await page.evaluate(async () => {
+    await navigator.clipboard.writeText("SENTINEL");
+  });
+  await stubShare(
+    `() => Promise.reject(Object.assign(new Error("cancelled"), { name: "AbortError" }))`,
+  );
+  await share.click();
+  await page.waitForTimeout(200);
+  ok(
+    (await page.evaluate(() => navigator.clipboard.readText())) === "SENTINEL",
+    "dismissing the sheet does not copy the link behind your back",
+  );
+
+  // Tier two: no share sheet, so fall back to the clipboard.
+  await stubShare(null);
+  await share.click();
+  await page.waitForSelector("text=Link copied");
+  ok(
+    (await page.evaluate(() => navigator.clipboard.readText())) === `${BASE}/`,
+    "without a share sheet it copies the link instead",
+    await page.evaluate(() => navigator.clipboard.readText()),
+  );
+
+  // Tier three: neither works — the link still has to be gettable.
+  await page.evaluate(() => {
+    navigator.clipboard.writeText = () => Promise.reject(new Error("blocked"));
+  });
+  await share.click();
+  await page.waitForSelector(".share-url");
+  ok(
+    (await page.locator(".share-url").inputValue()) === `${BASE}/`,
+    "with neither, the URL is shown as selectable text rather than a dead button",
   );
   await ctx.close();
 }

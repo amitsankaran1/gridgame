@@ -50,8 +50,8 @@ Postgres, a Server Function writing it, or a drag landing on a pixel, and a mock
 of any of those tests the mock. It covers the reveal gate (including that a
 locked board's coordinates are absent from the raw response, not just hidden), a
 drag round-tripping through the database, a three-way tie at 390px, keyboard-only
-placement, admin authorisation by replaying a captured action without the cookie,
-and the empty states.
+placement, all three tiers of the share fallback, admin authorisation by replaying
+a captured action without the cookie, and the empty states.
 
 Run it against a throwaway database — it writes grids, players and ideas, and
 takes the live grid down at the end.
@@ -74,8 +74,10 @@ app/
   admin/page.tsx        the queue, put a grid up, take one down
   admin/actions.ts      signIn · signOut · putGridUp · takeGridDown · setIdeaStatus
 components/
-  Plane.tsx             the square: axes, dots, collision fan-out, drag
+  Plane.tsx             the square: axes, dots, collision fan-out, drag, arrow keys
   Board.tsx             marker state + commit (the only substantial client component)
+  Splash.tsx            the first-timer explainer (a Server Component — no JS)
+  ShareButton.tsx       share sheet → clipboard → visible URL
   ArchivedBoard.tsx  IdeaForm.tsx  InitialsEntry.tsx  AdminControls.tsx  Nav.tsx
 lib/
   queries.ts            every read, including the reveal gate
@@ -95,7 +97,7 @@ action rather than in a page or a proxy: Server Functions POST to the route of t
 page they're used on, so nothing outside them covers them. The `isAdmin()` call in
 `app/admin/page.tsx` only decides what to render.
 
-## Five things that are easy to get wrong
+## Six things that are easy to get wrong
 
 **The reveal gate is server-side.** If the client filtered the dots they would be
 one devtools tab away. `boardFor()` in `lib/queries.ts` doesn't *select* the
@@ -120,6 +122,12 @@ it could only ever commit to dead centre. `role="application"` is only honest
 because `handleKey` really consumes those keys. The position also renders as a
 sentence under the square — the one piece of feedback that serves a screen reader
 and a sighted user with the same element.
+
+**The splash is behind the reveal gate too.** `components/Splash.tsx` renders for
+exactly the people who have not committed, so anything real on it would be a hole
+in the gate. Its diagram is schematic — the blurred marks are decoration, not
+data, and the blur is the gate drawn as a picture. `tests/e2e.mjs` asserts a
+newcomer's splash carries no plotted player's initials.
 
 **A form that clears itself has to clear only what it sent.** A Server Action plus
 its revalidation can outlast the moment someone starts typing the next entry, and
