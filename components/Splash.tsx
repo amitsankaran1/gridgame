@@ -23,7 +23,7 @@ export default function Splash({ grid }: { grid: Grid }) {
       </div>
 
       <div className="splash-plane">
-        <div className="plane-label plane-label-y">{grid.y_top}</div>
+        <div className="splash-label">{grid.y_top}</div>
 
         {/* Decorative: the axis labels around it carry the real information, and
             the steps below say what the picture is showing. */}
@@ -57,12 +57,12 @@ export default function Splash({ grid }: { grid: Grid }) {
           </text>
         </svg>
 
-        <div className="plane-x-labels">
-          <span className="plane-label plane-label-x">{grid.x_left}</span>
-          <span className="plane-label plane-label-x">{grid.x_right}</span>
+        <div className="splash-x-labels">
+          <span className="splash-label splash-label-x">{grid.x_left}</span>
+          <span className="splash-label splash-label-x">{grid.x_right}</span>
         </div>
 
-        <div className="plane-label plane-label-y">{grid.y_bottom}</div>
+        <div className="splash-label">{grid.y_bottom}</div>
       </div>
 
       <ol className="splash-steps">

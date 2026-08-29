@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Grid, PublicPlot } from "@/lib/types";
 
 /**
@@ -57,6 +57,21 @@ type Placed = {
  * a disagreement. The circle says "all of these really sit in here."
  */
 type Ring = { key: string; cx: number; cy: number; radius: number };
+
+/** The four axis labels, each named for the edge it sits against. */
+type Edge = "top" | "bottom" | "left" | "right";
+const EDGES: Edge[] = ["top", "bottom", "left", "right"];
+
+/** A label's footprint in square-relative pixels, measured after layout. */
+type Box = { left: number; top: number; right: number; bottom: number };
+
+/**
+ * How much room a mark needs before it counts as crowding a label. A mark is
+ * more than its dot: the initials hang below it. Generous on purpose, so a
+ * label yields just before the two touch rather than just after.
+ */
+const MARK_PAD_X = 10;
+const MARK_PAD_Y = 24;
 
 /**
  * Greedy clustering by distance. Bucketing into grid cells is cheaper but
@@ -130,8 +145,49 @@ type Props = {
 
 export default function Plane({ grid, plots, marker, onMarkerChange }: Props) {
   const squareRef = useRef<HTMLDivElement>(null);
+  const labelRefs = useRef<Partial<Record<Edge, HTMLDivElement | null>>>({});
   const [dragging, setDragging] = useState(false);
+  const [squareSize, setSquareSize] = useState(0);
+  const [labelBoxes, setLabelBoxes] = useState<Partial<Record<Edge, Box>>>({});
   const interactive = typeof onMarkerChange === "function";
+
+  // The labels live inside the square now, so a dot can land on one. Working
+  // out which needs their real pixel boxes: a threshold in plane coordinates
+  // can't work, because the labels are a fixed pixel size while the square
+  // isn't, and because "Chill" and a forty-character label are nothing alike.
+  useEffect(() => {
+    const square = squareRef.current;
+    if (!square) return;
+    setSquareSize(square.getBoundingClientRect().width);
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      setSquareSize(entry.contentRect.width);
+    });
+    observer.observe(square);
+    return () => observer.disconnect();
+  }, []);
+
+  // Measured off getBoundingClientRect rather than offsetLeft/Top, because the
+  // labels are centred with a translate() that offsetLeft doesn't know about.
+  // Crowding only ever changes opacity, so this can't feed back into layout.
+  useLayoutEffect(() => {
+    const square = squareRef.current;
+    if (!square) return;
+    const origin = square.getBoundingClientRect();
+    const next: Partial<Record<Edge, Box>> = {};
+    for (const edge of EDGES) {
+      const el = labelRefs.current[edge];
+      if (!el) continue;
+      const rect = el.getBoundingClientRect();
+      next[edge] = {
+        left: rect.left - origin.left,
+        top: rect.top - origin.top,
+        right: rect.right - origin.left,
+        bottom: rect.bottom - origin.top,
+      };
+    }
+    setLabelBoxes(next);
+  }, [squareSize, grid.x_left, grid.x_right, grid.y_bottom, grid.y_top]);
 
   const pointToValue = useCallback((clientX: number, clientY: number) => {
     const square = squareRef.current;
@@ -189,10 +245,39 @@ export default function Plane({ grid, plots, marker, onMarkerChange }: Props) {
 
   const { dots, rings } = plots ? place(plots) : { dots: [], rings: [] };
 
+  // Every mark actually drawn — the ring-fanned positions, not the raw plots,
+  // plus the marker, which is the one that moves. All of it is already in hand
+  // at render time, so no listener and no per-frame measurement is needed:
+  // Board holds the marker in state, so a drag re-renders this anyway.
+  const marks = marker ? [...dots, marker] : dots;
+  const unit = (squareSize - INSET_PX * 2) / 2;
+
+  const isCrowded = (edge: Edge) => {
+    const box = labelBoxes[edge];
+    if (!box || unit <= 0) return false;
+    return marks.some((mark) => {
+      const x = INSET_PX + (mark.x + 1) * unit;
+      const y = INSET_PX + (-mark.y + 1) * unit;
+      return (
+        x > box.left - MARK_PAD_X && x < box.right + MARK_PAD_X &&
+        y > box.top - MARK_PAD_Y && y < box.bottom + MARK_PAD_Y
+      );
+    });
+  };
+
+  const label = (edge: Edge, text: string) => (
+    <div
+      ref={(el) => {
+        labelRefs.current[edge] = el;
+      }}
+      className={`plane-label plane-label-${edge}${isCrowded(edge) ? " is-crowded" : ""}`}
+    >
+      {text}
+    </div>
+  );
+
   return (
     <div className="plane">
-      <div className="plane-label plane-label-y">{grid.y_top}</div>
-
       <div
           ref={squareRef}
           className={`plane-square${interactive ? " is-interactive" : ""}`}
@@ -239,6 +324,14 @@ export default function Plane({ grid, plots, marker, onMarkerChange }: Props) {
           <div className="plane-axis plane-axis-x" />
           <div className="plane-axis plane-axis-y" />
 
+          {/* Inside the square, each centred on the axis it names. Outside, they
+              had to be given layout space, and on a phone that space came
+              straight out of the square. */}
+          {label("top", grid.y_top)}
+          {label("bottom", grid.y_bottom)}
+          {label("left", grid.x_left)}
+          {label("right", grid.x_right)}
+
           {rings.map((ring) => (
             <div
               key={ring.key}
@@ -275,13 +368,6 @@ export default function Plane({ grid, plots, marker, onMarkerChange }: Props) {
             </div>
           )}
       </div>
-
-      <div className="plane-x-labels">
-        <span className="plane-label plane-label-x">{grid.x_left}</span>
-        <span className="plane-label plane-label-x">{grid.x_right}</span>
-      </div>
-
-      <div className="plane-label plane-label-y">{grid.y_bottom}</div>
 
       {interactive && (
         <>
