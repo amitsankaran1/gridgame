@@ -72,12 +72,14 @@ const hydrated = (page, selector = "form") =>
   );
 
 /**
- * Walk a fresh player through onboarding: initials and a colour, on the same
- * screen as the week's question. `color` picks a specific swatch so a test can
- * assert on it; the default keeps older call sites explicit about selecting one.
+ * Walk a fresh player through onboarding: Continue off the intro, then initials
+ * and a colour. `color` picks a specific swatch so a test can assert on it; the
+ * default keeps older call sites explicit about selecting one.
  */
 async function setInitials(page, initials, color = "slate") {
   await page.goto(`${BASE}/`);
+  const next = page.getByRole("button", { name: "Continue" });
+  if ((await next.count()) > 0) await next.click();
   await hydrated(page, "form.initials-form");
   await page.fill("#initials", initials);
   if (color) await page.locator(`.swatch[data-color="${color}"]`).click();
@@ -234,32 +236,26 @@ group("The splash");
   const { ctx, page } = await person(390);
   await page.goto(`${BASE}/`);
   ok(await page.locator(".splash-plane").isVisible(), "a first-timer gets the explainer");
-  ok((await page.locator(".splash-steps li").count()) === 3, "…with the three steps");
+  ok((await page.locator(".splash-steps li").count()) === 2, "…with the two beats");
+  ok(
+    (await page.getByText(
+      "This week is a 2-axis grid. Place yourself, then see where everyone else landed.",
+    ).count()) > 0,
+    "…and the intro body",
+  );
+  ok(
+    (await page.getByText("You get one dot. You can move it later.").count()) > 0 &&
+      (await page.getByText("Nobody else shows until you place yours.").count()) > 0,
+    "…that say you get one moveable dot, and nobody else shows yet",
+  );
   ok(
     (await page.getByText("high maintenance").count()) > 0 &&
       (await page.getByText("not chill").count()) > 0,
     "…and this week's real axis labels, so you know what you're answering",
   );
-  ok(await page.locator("#initials").isVisible(), "the initials field is on the same screen");
-  ok((await page.locator(".swatch").count()) === 8, "…and so is the colour picker");
-  ok(
-    await page.locator('form.initials-form button[type="submit"]').isDisabled(),
-    "the form stays disabled until a colour is chosen",
-  );
-  await page.locator('.swatch[data-color="plum"]').click();
-  await page.locator('.swatch[data-color="slate"]').click();
-  const picked = await page.locator('.swatch.is-selected').evaluateAll((swatches) =>
-    swatches.map((swatch) => swatch.getAttribute("data-color")),
-  );
-  ok(
-    picked.length === 1 && picked[0] === "slate",
-    "changing colour leaves exactly the new swatch selected",
-    JSON.stringify(picked),
-  );
-  ok(
-    (await page.getByRole("button", { name: "I'm in" }).count()) === 0,
-    "there is no second screen to click through",
-  );
+  ok(await page.getByRole("button", { name: "Continue" }).isVisible(), "Continue advances to the profile");
+  ok(!(await page.locator("#initials").isVisible()), "the initials field is not on the intro");
+  ok((await page.locator(".swatch:visible").count()) === 0, "…and neither is the colour picker");
 
   const splashEscaped = await escapedLabels(".splash-board", ".splash-label")(page);
   ok(
@@ -328,6 +324,56 @@ group("The splash");
     "the diagram is hidden from screen readers rather than read out as noise",
   );
 
+  const schematicBefore = await page.locator(".splash-board").boundingBox();
+  await page.getByRole("button", { name: "Continue" }).click();
+  ok(await page.getByRole("heading", { name: "Who you are" }).isVisible(), "Continue opens the profile");
+  ok(await page.locator("#initials").isVisible(), "…with the initials field");
+  ok((await page.locator(".swatch").count()) === 8, "…and the colour picker");
+  ok(
+    await page.locator('form.initials-form button[type="submit"]').isDisabled(),
+    "the form stays disabled until a colour is chosen",
+  );
+  await page.locator('.swatch[data-color="plum"]').click();
+  await page.locator('.swatch[data-color="slate"]').click();
+  const picked = await page.locator(".swatch.is-selected").evaluateAll((swatches) =>
+    swatches.map((swatch) => swatch.getAttribute("data-color")),
+  );
+  ok(
+    picked.length === 1 && picked[0] === "slate",
+    "changing colour leaves exactly the new swatch selected",
+    JSON.stringify(picked),
+  );
+  ok(
+    (await page.getByRole("button", { name: "Take me to the board" }).count()) === 1,
+    "the profile CTA is Take me to the board",
+  );
+  const overflowProfile = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  ok(overflowProfile === 0, "the profile doesn't scroll sideways at 390px", `overflow ${overflowProfile}px`);
+  const schematicOnProfile = await page.locator(".splash-board").boundingBox();
+  ok(
+    schematicBefore &&
+      schematicOnProfile &&
+      Math.abs(schematicOnProfile.y - schematicBefore.y) < 1 &&
+      Math.abs(schematicOnProfile.height - schematicBefore.height) < 1,
+    "the schematic does not jump when you continue",
+    JSON.stringify({ before: schematicBefore, after: schematicOnProfile }),
+  );
+
+  await page.getByRole("button", { name: "Back" }).click();
+  ok(await page.getByRole("button", { name: "Continue" }).isVisible(), "back restores the intro");
+  ok(!(await page.locator("#initials").isVisible()), "…and hides the form");
+  const schematicAfterBack = await page.locator(".splash-board").boundingBox();
+  ok(
+    schematicBefore &&
+      schematicAfterBack &&
+      Math.abs(schematicAfterBack.y - schematicBefore.y) < 1 &&
+      Math.abs(schematicAfterBack.height - schematicBefore.height) < 1,
+    "…without a layout jump",
+    JSON.stringify({ before: schematicBefore, after: schematicAfterBack }),
+  );
+
   // Setting initials is the only thing that retires it.
   await setInitials(page, "SPL");
   ok((await page.locator(".splash-plane").count()) === 0, "it is gone once you have initials");
@@ -341,7 +387,9 @@ group("The reveal gate");
 const alice = await person();
 {
   await alice.page.goto(`${BASE}/`);
-  ok(await alice.page.locator("#initials").isVisible(), "a new visitor is asked for initials");
+  ok(await alice.page.locator(".splash-plane").isVisible(), "a new visitor sees the intro");
+  await alice.page.getByRole("button", { name: "Continue" }).click();
+  ok(await alice.page.locator("#initials").isVisible(), "…and is asked for initials after Continue");
 
   await setInitials(alice.page, "AAA");
   ok(await alice.page.locator(".plane-square").isVisible(), "the square renders once initials are set");
@@ -388,6 +436,12 @@ const bob = await person();
     (await newcomer.page.locator(".plane-dot").count()) === 0,
     "…and draws no real dots",
   );
+  await newcomer.page.getByRole("button", { name: "Continue" }).click();
+  ok(
+    (await newcomer.page.locator(".plane-dot").count()) === 0,
+    "…nor on the profile screen",
+  );
+  ok(!(await newcomer.page.content()).includes("BBB"), "…and the profile does not leak them either");
   await newcomer.ctx.close();
 }
 
@@ -1051,6 +1105,7 @@ group("Bad input and bad URLs");
   ok(missing.status() === 404, "an unknown archive id 404s", `got ${missing.status()}`);
 
   await page.goto(`${BASE}/`);
+  await page.getByRole("button", { name: "Continue" }).click();
   await hydrated(page, "form.initials-form");
   await page.fill("#initials", "ab");
   ok(

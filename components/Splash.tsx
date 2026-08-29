@@ -1,4 +1,4 @@
-import Onboarding from "@/components/Onboarding";
+import SplashFlow from "@/components/SplashFlow";
 import type { Grid } from "@/lib/types";
 
 /**
@@ -7,9 +7,8 @@ import type { Grid } from "@/lib/types";
  * setting your initials is what makes it go away, permanently.
  *
  * A Server Component on purpose: it is static markup, and the whole point of a
- * splash is that it is the first paint. The identity form is the only client
- * island, and it sits on this same screen — the week's question first, then
- * initials and a colour. No second page.
+ * splash is that it is the first paint. The two screens below (intro, then
+ * who you are) are the only client island. No second route.
  *
  * It must never show real dots. This page renders for people who have not
  * committed, so the reveal gate applies to it exactly as it does everywhere
@@ -19,13 +18,7 @@ import type { Grid } from "@/lib/types";
 export default function Splash({ grid }: { grid: Grid }) {
   return (
     <div className="stack">
-      <div>
-        <h1>{grid.title ?? "This week"}</h1>
-        <p className="meta">
-          Place yourself on this week&apos;s grid. You get one dot, and you can
-          move it if you change your mind.
-        </p>
-      </div>
+      <h1>{grid.title ?? "This week"}</h1>
 
       <div className="splash-plane">
         <div className="splash-board">
@@ -69,13 +62,7 @@ export default function Splash({ grid }: { grid: Grid }) {
         </div>
       </div>
 
-      <ol className="splash-steps">
-        <li>Three initials and a colour — that&apos;s the whole sign-up.</li>
-        <li>Drag yourself onto the square.</li>
-        <li>Everyone else appears the moment you do.</li>
-      </ol>
-
-      <Onboarding />
+      <SplashFlow />
     </div>
   );
 }

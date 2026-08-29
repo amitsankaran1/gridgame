@@ -5,14 +5,14 @@ import { setProfile } from "@/app/actions";
 import { PLAYER_COLORS, type PlayerColor } from "@/lib/colors";
 
 /**
- * Initials and a colour, on the same screen as the week's question. The splash
- * already said what the house is arguing about; this is just who you are.
+ * Initials and a colour — the second screen of the first-run splash. The intro
+ * already said what this week is; this is just who you are.
  *
  * None of this needs persisting. `app/page.tsx` already branches on whether you
  * have initials, so having them *is* the record that you have been here — a
- * returning player never sees this again.
+ * returning player never sees this again. Back restores the intro in memory.
  */
-export default function Onboarding() {
+export default function Onboarding({ onBack }: { onBack: () => void }) {
   const [initials, setInitials] = useState("");
   const [color, setColor] = useState<PlayerColor | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -32,6 +32,8 @@ export default function Onboarding() {
 
   return (
     <form className="initials-form stack" onSubmit={submit}>
+      <h2>Who you are</h2>
+
       <div>
         <label className="field-label" htmlFor="initials">
           Your initials
@@ -97,6 +99,9 @@ export default function Onboarding() {
       ) : null}
 
       <div className="row">
+        <button className="button secondary" type="button" onClick={onBack}>
+          Back
+        </button>
         <button className="button" type="submit" disabled={!valid || pending}>
           {pending ? "Saving…" : "Take me to the board"}
         </button>
