@@ -145,94 +145,72 @@ a {
 
 /* ---------- the plane ---------- */
 
-/* Each label sits against the middle of the edge it names, so the axis it
-   belongs to is unmistakable: the x pair flanks the square at its horizontal
-   axis, the y pair caps it at the vertical one. */
 .plane {
-  display: grid;
-  grid-template-columns: minmax(0, auto) minmax(0, 1fr) minmax(0, auto);
-  grid-template-areas:
-    ".    top     ."
-    "left square  right"
-    ".    bottom  ."
-    "foot foot    foot";
-  align-items: center;
-  column-gap: 10px;
-  row-gap: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   margin: 4px 0 20px;
 }
 
+/* The axis labels live INSIDE the square, each centred on the axis it names:
+   the top/bottom pair on the vertical axis, the left/right pair on the
+   horizontal one. Outside the square they needed layout space of their own,
+   and on a phone that space came straight out of the square. */
 .plane-label {
+  position: absolute;
+  text-align: center;
   color: var(--ink-soft);
   font-size: 16px;
   font-weight: 500;
   line-height: 1.25;
+  /* The square is a pointer target. A label that swallowed a pointerdown
+     would be a dead patch you could not plot on. */
+  pointer-events: none;
+  transition: opacity 140ms ease;
 }
 
-.plane-label-y {
-  text-align: center;
+/* A mark has landed on this label. Fade rather than hide: opacity leaves the
+   text in the accessibility tree, so a screen reader still reads the axis name
+   while someone is parked on it, and the readout under the square spells it
+   out in words either way. */
+.plane-label.is-crowded {
+  opacity: 0;
+}
+
+.plane-label-top,
+.plane-label-bottom {
+  left: 50%;
+  transform: translateX(-50%);
+  /* Room for the 40-character maximum to wrap to two lines, while staying
+     clear of both side labels. */
+  max-width: 60%;
 }
 
 .plane-label-top {
-  grid-area: top;
+  top: 10px;
 }
 
 .plane-label-bottom {
-  grid-area: bottom;
+  bottom: 10px;
 }
 
-/* Capped so a wordy label wraps instead of squeezing the square down to
-   nothing — the square is the thing people aim at. */
-.plane-label-x {
-  max-width: 11ch;
+.plane-label-left,
+.plane-label-right {
+  top: 50%;
+  transform: translateY(-50%);
+  /* Two of these plus their gaps can never meet in the middle. */
+  max-width: 34%;
 }
 
 .plane-label-left {
-  grid-area: left;
-  text-align: right;
+  left: 10px;
 }
 
 .plane-label-right {
-  grid-area: right;
-  text-align: left;
-}
-
-.plane-foot {
-  grid-area: foot;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* On a phone the side columns would eat more of the square than the placement
-   is worth, so the x pair drops back under it — still left and right, just on
-   one line. */
-@media (max-width: 560px) {
-  .plane {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-areas:
-      "top    top"
-      "square square"
-      "left   right"
-      "bottom bottom"
-      "foot   foot";
-  }
-
-  .plane-label-x {
-    max-width: 100%;
-  }
-
-  .plane-label-left {
-    text-align: left;
-  }
-
-  .plane-label-right {
-    text-align: right;
-  }
+  right: 10px;
 }
 
 .plane-square {
-  grid-area: square;
   position: relative;
   width: 100%;
   aspect-ratio: 1;
