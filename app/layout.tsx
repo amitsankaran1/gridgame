@@ -23,7 +23,7 @@ function siteUrl(): URL {
 export const metadata: Metadata = {
   metadataBase: siteUrl(),
   title: "gridgame",
-  description: "The house chalkboard, online. A new grid every week.",
+  description: "A new 2-axis grid every week. Place yourself, then see where everyone else landed.",
   // app/opengraph-image.tsx supplies the image itself; this is what tells
   // Twitter/X to render it large rather than as a thumbnail beside the text.
   twitter: { card: "summary_large_image" },

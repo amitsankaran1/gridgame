@@ -1,6 +1,6 @@
 # gridgame
 
-The house chalkboard, online. Every week a new x/y plane goes up — X: *chill ↔
+A weekly 2-axis grid. Every week a new x/y plane goes up — X: *chill ↔
 not chill*, Y: *high maintenance ↔ low maintenance* — and friends open a link on
 their phone, enter three initials, and drag themselves onto the square.
 

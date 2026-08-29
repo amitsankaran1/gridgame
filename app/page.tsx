@@ -18,7 +18,7 @@ export default async function Home() {
         <p className="notice">
           No grid is up at the moment. The next one goes up when someone puts it
           there — <Link href="/ideas">suggest one</Link>, or have a look at{" "}
-          <Link href="/archive">what the house has argued about</Link> so far.
+          <Link href="/archive">past weeks</Link>.
         </p>
       </div>
     );
