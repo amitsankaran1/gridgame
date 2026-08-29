@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import Link from "next/link";
 import ShareButton from "@/components/ShareButton";
 
 /**
@@ -52,6 +53,10 @@ export default function ShareDialog({
         <p className="meta">
           Everyone else is visible now. Pass it on and see where they put
           themselves.
+        </p>
+        <p className="meta">
+          Got a better pair of axes?{" "}
+          <Link href="/ideas">Submit a grid</Link> for a future week.
         </p>
         <div className="row">
           <ShareButton question={question} primary />

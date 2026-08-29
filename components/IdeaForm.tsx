@@ -59,12 +59,9 @@ export default function IdeaForm() {
         {field("y_bottom", "Y, bottom", "low maintenance")}
         {field("y_top", "Y, top", "high maintenance")}
       </div>
-      <div className="row">
-        <button className="button" type="submit" disabled={!complete || pending}>
-          {pending ? "Sending…" : "Submit idea"}
-        </button>
-        <span className="meta">Five waiting at a time.</span>
-      </div>
+      <button className="button" type="submit" disabled={!complete || pending}>
+        {pending ? "Sending…" : "Submit idea"}
+      </button>
       {error && <p className="error">{error}</p>}
     </form>
   );

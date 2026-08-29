@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { queryOne } from "@/lib/db";
-import { activeGrid, pendingIdeaCount } from "@/lib/queries";
+import { activeGrid } from "@/lib/queries";
 import { getOrCreatePlayer } from "@/lib/session";
 import { parseAxes, parseColor, parseCoord, parseInitials } from "@/lib/validate";
 
@@ -13,8 +13,6 @@ import { parseAxes, parseColor, parseCoord, parseInitials } from "@/lib/validate
  * are a convenience, never the boundary.
  */
 export type ActionResult = { error?: string };
-
-const PENDING_CAP = 5;
 
 /**
  * Initials and colour land together because onboarding asks for them on one
@@ -71,11 +69,6 @@ export async function submitIdea(input: Record<string, unknown>): Promise<Action
   }
 
   const player = await getOrCreatePlayer();
-  if ((await pendingIdeaCount(player.id)) >= PENDING_CAP) {
-    return {
-      error: `You already have ${PENDING_CAP} ideas waiting. Wait for one to be used.`,
-    };
-  }
 
   await queryOne(
     `insert into ideas (player_id, initials, x_left, x_right, y_bottom, y_top)

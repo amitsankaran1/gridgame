@@ -13,7 +13,7 @@ export default async function Ideas() {
       <div>
         <h1>Suggest a grid</h1>
         <p className="meta">
-          Four ends of two axes. The good ones go up on a future week.
+          Name both ends of each axis. If we like it, it becomes a future week.
         </p>
       </div>
 

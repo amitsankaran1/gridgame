@@ -130,11 +130,3 @@ export async function allIdeas(): Promise<Idea[]> {
   );
 }
 
-export async function pendingIdeaCount(playerId: string): Promise<number> {
-  const row = await queryOne<{ count: string }>(
-    `select count(*)::text as count from ideas
-      where player_id = $1 and status = 'pending'`,
-    [playerId],
-  );
-  return Number(row?.count ?? 0);
-}

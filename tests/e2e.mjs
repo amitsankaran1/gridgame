@@ -779,6 +779,10 @@ group("The share sheet");
     (await sheet.getByRole("button", { name: "Share" }).count()) === 1,
     "…with a share button in it",
   );
+  ok(
+    (await sheet.getByRole("link", { name: "Submit a grid" }).getAttribute("href")) === "/ideas",
+    "…and a link to submit a grid for a future week",
+  );
 
   // It opens on the reveal, so it must not sit on top of the reveal.
   const clear = await page.evaluate(() => {
@@ -919,6 +923,11 @@ group("Ideas");
   const page = alice.page;
   await page.goto(`${BASE}/ideas`);
   await hydrated(page, "form.stack");
+  ok(
+    (await page.getByText("Name both ends of each axis. If we like it, it becomes a future week.").count()) > 0,
+    "ideas says what the four fields are for",
+  );
+  ok((await page.getByText("Five waiting at a time.").count()) === 0, "…and does not mention a waiting cap");
   ok((await page.getByText("Nothing from you yet").count()) > 0, "ideas has an empty state");
 
   const inputs = page.locator("form.stack .input");
@@ -938,18 +947,18 @@ group("Ideas");
 
 }
 
-group("The pending-idea cap");
+group("A sixth pending idea");
 {
-  // Its own person: the cap is per player, so sharing one with another group
-  // would make this assertion depend on what that group happened to submit.
+  // Its own person: the count is only what this loop wrote, so sharing one
+  // with another group would make this assertion depend on their submits.
   const { ctx, page } = await person();
-  await setInitials(page, "CAP");
+  await setInitials(page, "SIX");
   await page.goto(`${BASE}/ideas`);
   await hydrated(page, "form.stack");
   const inputs = page.locator("form.stack .input");
   const submit = page.getByRole("button", { name: /Submit idea|Sending/ });
 
-  for (const n of [1, 2, 3, 4, 5]) {
+  for (const n of [1, 2, 3, 4, 5, 6]) {
     for (const [i, v] of [[0, `l${n}`], [1, `r${n}`], [2, `b${n}`], [3, `t${n}`]]) {
       await inputs.nth(i).fill(v);
     }
@@ -961,20 +970,8 @@ group("The pending-idea cap");
       { timeout: 15_000 },
     );
   }
-  ok((await page.locator(".card-list .card").count()) === 5, "five ideas can be queued");
-
-  for (const [i, v] of [[0, "l6"], [1, "r6"], [2, "b6"], [3, "t6"]]) await inputs.nth(i).fill(v);
-  await submit.click();
-  await page.waitForSelector(".error", { timeout: 15_000 });
-  ok(
-    (await page.locator(".error").textContent())?.includes("5 ideas waiting"),
-    "the sixth pending idea is refused with a readable reason",
-    await page.locator(".error").textContent(),
-  );
-  ok(
-    (await page.locator(".card-list .card").count()) === 5,
-    "…and it is not silently stored anyway",
-  );
+  ok((await page.locator(".card-list .card").count()) === 6, "a sixth idea is accepted");
+  ok((await page.locator(".error").count()) === 0, "…without an error");
   await ctx.close();
 }
 
