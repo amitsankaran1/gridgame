@@ -67,13 +67,33 @@ const hydrated = (page, selector = "form") =>
     { timeout: 15_000 },
   );
 
-async function setInitials(page, initials) {
+/**
+ * Walk a fresh player through onboarding: the welcome screen, then initials and
+ * a colour. `color` picks a specific swatch so a test can assert on it; leaving
+ * it off keeps whatever the form randomly pre-selected.
+ */
+async function setInitials(page, initials, color) {
   await page.goto(`${BASE}/`);
+  // The welcome screen renders a non-interactive plane, so wait for the button
+  // rather than for .plane-square — the square exists on both screens.
+  await page.waitForSelector("button", { timeout: 10_000 });
+  await page.getByRole("button", { name: "I'm in" }).click();
   await hydrated(page, "form.initials-form");
   await page.fill("#initials", initials);
+  if (color) await page.locator(`.swatch[data-color="${color}"]`).click();
   await page.click("form.initials-form button[type=submit]");
   await page.waitForSelector(".plane-square", { timeout: 10_000 });
 }
+
+/**
+ * Dots now animate in when the board opens up. Their transforms are mid-flight
+ * for a few hundred milliseconds, so anything measuring geometry has to let the
+ * entrance finish or it measures a dot that is still 30% of its final size.
+ */
+const settleAnimations = (page) =>
+  page.evaluate(() =>
+    Promise.all(document.getAnimations().map((a) => a.finished.catch(() => {}))),
+  );
 
 /** Drag the marker to a normalised -1…1 point and commit it. */
 async function placeAt(page, x, y) {
@@ -85,8 +105,9 @@ async function placeAt(page, x, y) {
   await page.mouse.down();
   await page.mouse.move(px, py);
   await page.mouse.up();
-  await page.getByRole("button", { name: /Place me here|Move my dot here/ }).click();
+  await page.getByRole("button", { name: /Place me here|Move me here/ }).click();
   await settle(page);
+  await settleAnimations(page);
   return { px, py };
 }
 
@@ -95,9 +116,9 @@ group("No grid is up");
 {
   const { ctx, page } = await person();
   await page.goto(`${BASE}/`);
-  ok(await page.getByText("Nothing up yet").isVisible(), "home explains there is no grid");
+  ok(await page.getByText("Between rounds").isVisible(), "home explains there is no grid");
   await page.goto(`${BASE}/archive`);
-  ok(await page.getByText("Nothing has been archived yet").isVisible(), "archive has an empty state");
+  ok(await page.getByText("The first grid to come down").isVisible(), "archive has an empty state");
   await ctx.close();
 }
 
@@ -138,7 +159,8 @@ group("The reveal gate");
 const alice = await person();
 {
   await alice.page.goto(`${BASE}/`);
-  ok(await alice.page.locator("#initials").isVisible(), "a new visitor is asked for initials");
+  ok(await alice.page.getByRole("button", { name: "I'm in" }).isVisible(),
+    "a new visitor gets the intro before being asked for anything");
 
   await setInitials(alice.page, "AAA");
   ok(await alice.page.locator(".plane-square").isVisible(), "the square renders once initials are set");
@@ -169,7 +191,7 @@ const bob = await person();
   const raw = await res.text();
   ok(!raw.includes("BBB"), "…nor in the raw server response");
   ok(
-    (await alice.page.getByText(/1 person is already on the board/).count()) > 0,
+    (await alice.page.getByText(/One person is already out there/).count()) > 0,
     "the locked board still reports the headcount",
   );
 }
@@ -192,7 +214,7 @@ group("Placing and moving");
     `got ${x}, ${y}`,
   );
 
-  await alice.page.getByRole("button", { name: "Move my dot" }).click();
+  await alice.page.getByRole("button", { name: "Move me" }).click();
   // Your committed dot must give way to the marker while you aim: two orange
   // marks and two labels stacked on one coordinate is unreadable.
   ok(
@@ -227,6 +249,7 @@ const tie = [];
   const page = tie[2].page;
   await page.reload();
   await settle(page);
+  await settleAnimations(page);
 
   ok((await page.locator(".plane-dot").count()) === 5, "every dot is drawn");
   ok((await page.locator(".plane-cluster").count()) === 1, "the tie gets one cluster ring");
@@ -274,6 +297,70 @@ const tie = [];
       .filter((b) => b.h < 44),
   );
   ok(small.length === 0, "every button clears a 44px tap target", JSON.stringify(small));
+}
+
+// ───────────────────────────────────────────────────── colours
+// After the tie, deliberately: that test counts every dot on the board, and a
+// player created here would be one more than it expects.
+group("Player colours");
+{
+  const { ctx, page } = await person();
+  await setInitials(page, "TEA", "teal");
+  await placeAt(page, -0.3, 0.4);
+
+  ok(
+    (await page.locator('.plane-dot.is-me[data-color="teal"]').count()) === 1,
+    "the colour you picked is the colour your dot is drawn in",
+  );
+
+  // Ownership has to survive everyone choosing their own colour, so it is
+  // carried by the halo rather than by hue. If this regresses, "which one is
+  // me" silently stops being answerable on a board where someone else picked
+  // your colour too.
+  const halo = await page.evaluate(() => {
+    const mark = document.querySelector(".plane-dot.is-me .plane-dot-mark");
+    return getComputedStyle(mark).boxShadow;
+  });
+  ok(halo !== "none" && halo.length > 0, "your own dot is ringed, not just tinted", halo);
+
+  // Every palette entry has to be legible on both grounds; the dark values are
+  // re-derived rather than reused, and nothing else checks that they exist.
+  const resolved = await page.evaluate(() => {
+    const root = getComputedStyle(document.documentElement);
+    return ["clay", "moss", "plum", "sky", "ochre", "teal", "rose", "slate"].map((n) => [
+      n,
+      root.getPropertyValue(`--c-${n}`).trim(),
+    ]);
+  });
+  ok(
+    resolved.every(([, value]) => /^#[0-9a-f]{6}$/i.test(value)),
+    "all eight palette tokens resolve",
+    JSON.stringify(resolved),
+  );
+
+  const darkCtx = await browser.newContext({ colorScheme: "dark" });
+  const darkPage = await darkCtx.newPage();
+  await darkPage.goto(`${BASE}/`);
+  const darkResolved = await darkPage.evaluate(() => {
+    const root = getComputedStyle(document.documentElement);
+    return ["clay", "moss", "plum", "sky", "ochre", "teal", "rose", "slate"].map((n) =>
+      root.getPropertyValue(`--c-${n}`).trim(),
+    );
+  });
+  ok(
+    darkResolved.every((v, i) => /^#[0-9a-f]{6}$/i.test(v) && v !== resolved[i][1]),
+    "…and every one of them is re-derived for dark rather than reused",
+    JSON.stringify(darkResolved),
+  );
+  await darkCtx.close();
+
+  await page.getByRole("button", { name: "show as list" }).click();
+  ok(
+    (await page.locator('tr.is-me .plot-chip[data-color="teal"]').count()) === 1,
+    "the list view carries the same colour chip as the board",
+  );
+
+  await ctx.close();
 }
 
 // ─────────────────────────────────────────────── keyboard and contrast
@@ -373,7 +460,7 @@ group("Ideas");
   const page = alice.page;
   await page.goto(`${BASE}/ideas`);
   await hydrated(page, "form.stack");
-  ok((await page.getByText("You haven't sent any yet").count()) > 0, "ideas has an empty state");
+  ok((await page.getByText("Nothing from you yet").count()) > 0, "ideas has an empty state");
 
   const inputs = page.locator("form.stack .input");
   await inputs.nth(0).fill("indoors");
@@ -537,6 +624,7 @@ group("Bad input and bad URLs");
   ok(missing.status() === 404, "an unknown archive id 404s", `got ${missing.status()}`);
 
   await page.goto(`${BASE}/`);
+  await page.getByRole("button", { name: "I'm in" }).click();
   await hydrated(page, "form.initials-form");
   await page.fill("#initials", "ab");
   ok(
@@ -593,7 +681,7 @@ group("Admin authorisation");
     // And prove it by effect, not just by response: nothing may be live now.
     await page.goto(`${BASE}/`);
     ok(
-      (await page.getByText("Nothing up yet").count()) > 0,
+      (await page.getByText("Between rounds").count()) > 0,
       "…the grid the admin took down stayed down",
     );
   }

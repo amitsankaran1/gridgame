@@ -13,8 +13,18 @@ Reasons included so these don't get re-litigated.
   so a fast double-drag would leave two dots for one person. Its ~3 req/s
   per-integration limit also fails at exactly this app's load pattern: everyone
   opens the link at once. Notion stays a candidate for *authoring* grids later.
-- **Identity is a cookie, and nothing else, for now.** Zero friction to place a
-  first dot. The cost is that history dies with the cookie — see below.
+- **Identity is a cookie, and nothing else, for now.** Near-zero friction to
+  place a first dot. The cost is that history dies with the cookie — see below.
+- **Onboarding is two screens, once ever.** The week's question first, then
+  initials and a colour. Showing someone what the house is arguing about before
+  asking them to name themselves is the whole point of the ordering; a third
+  "how it works" screen was considered and dropped, because the drag hint already
+  lives under the square and the reveal gate is explained on the board itself.
+  Having initials *is* the record that you have been here, so nothing persists.
+- **Colour is a curated palette of eight, not a free picker.** A dot has to stay
+  legible on two grounds; a free hex lets someone pick the dark background and
+  vanish. Each entry is defined twice in `globals.css` and clears 4.5:1 on its
+  own ground.
 
 ## Backlog
 
@@ -34,7 +44,17 @@ Reasons included so these don't get re-litigated.
 - [ ] **Rate limit on placing a dot.** Low stakes among friends, higher in public.
 - [ ] **Initials collisions.** On a public board, three initials stop identifying
       anyone and nothing prevents impersonation. Decide whether to accept it or
-      disambiguate.
+      disambiguate. Colour helps a little and solves nothing: two players can
+      pick the same one, and the halo only tells you which dot is *yours*.
+- [ ] **Let the board say something about itself.** The data is already there to
+      derive a sentence — everyone is clustered in one corner, you are the
+      outlier, you are closest to JKM. One line under the square is the
+      difference between a chart and a conversation. Pure server-side work over
+      what `boardFor()` already returns.
+- [ ] **Archive thumbnails.** The archive is the warmest thing in the product
+      conceptually — old weeks, where everyone stood — and it currently renders
+      as a filing cabinet: title, date, "6 dots". Tiny planes would make it a
+      photo album.
 
 ## Not yet done
 
@@ -45,6 +65,12 @@ Reasons included so these don't get re-litigated.
 
 ### Done
 
+- [x] Warmth pass on the game page: a copy rewrite that says what is true
+      socially rather than what is true in the database, a staggered entrance for
+      the dots at the moment of reveal, player-chosen colours, and the two-screen
+      intro. Screenshotted at 390px in both schemes before it was called done —
+      the swatches wrapped 7+1 and the colour preview read as a ninth swatch, and
+      neither was visible until rendered.
 - [x] Screenshot at 390px wide with a deliberate 3-way tie, and look at it. Both
       real bugs in the first build — an unreadable cluster and a clipped corner
       label — were invisible until rendered. The tie now also has a regression

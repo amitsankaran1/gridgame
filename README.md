@@ -4,8 +4,11 @@ The house chalkboard, online. Every week a new x/y plane goes up — X: *chill �
 not chill*, Y: *high maintenance ↔ low maintenance* — and friends open a link on
 their phone, enter three initials, and drag themselves onto the square.
 
-**The board stays hidden until you commit your own dot.** Past weeks stay
-browsable at `/archive`.
+**The board stays hidden until you commit your own dot** — and when it opens up,
+the dots land one at a time, yours first. Past weeks stay browsable at `/archive`.
+
+A new player picks three initials and one of eight colours, once ever; after that
+the same link drops them straight onto the board every week.
 
 ## Stack
 
@@ -23,7 +26,7 @@ connection on 5432 exhausts connections on serverless.
 ```bash
 npm install
 cp .env.example .env.local     # fill in the three values
-npm run migrate                # or: psql "$DATABASE_URL" -f supabase/migrations/0001_init.sql
+npm run migrate                # runs every file in supabase/migrations, in order
 npm run dev
 ```
 
@@ -51,7 +54,8 @@ of any of those tests the mock. It covers the reveal gate (including that a
 locked board's coordinates are absent from the raw response, not just hidden), a
 drag round-tripping through the database, a three-way tie at 390px, keyboard-only
 placement, admin authorisation by replaying a captured action without the cookie,
-and the empty states.
+and the empty states. It also covers the colour palette resolving in both
+schemes, and the halo that marks your own dot.
 
 Run it against a throwaway database — it writes grids, players and ideas, and
 takes the live grid down at the end.
@@ -66,8 +70,8 @@ first *write*, which is always a Server Function.
 
 ```
 app/
-  page.tsx              this week — initials, drag, commit, reveal
-  actions.ts            setInitials · placeDot · submitIdea
+  page.tsx              this week — onboarding, drag, commit, reveal
+  actions.ts            setProfile · placeDot · submitIdea
   archive/page.tsx      past grids
   archive/[id]/page.tsx one past board, on its own URL
   ideas/page.tsx        suggest a grid, see your own submissions
@@ -76,11 +80,13 @@ app/
 components/
   Plane.tsx             the square: axes, dots, collision fan-out, drag
   Board.tsx             marker state + commit (the only substantial client component)
-  ArchivedBoard.tsx  IdeaForm.tsx  InitialsEntry.tsx  AdminControls.tsx  Nav.tsx
+  Onboarding.tsx        the two screens a new player sees, once ever
+  ArchivedBoard.tsx  IdeaForm.tsx  AdminControls.tsx  Nav.tsx
 lib/
   queries.ts            every read, including the reveal gate
+  colors.ts             the eight player colours, and the fallback for null
   db.ts session.ts admin.ts validate.ts types.ts
-supabase/migrations/    0001_init.sql
+supabase/migrations/    0001_init.sql  0002_player_color.sql
 ```
 
 `lib/queries.ts` holds every read. `boardFor()` is the one that matters: it is the
@@ -95,7 +101,7 @@ action rather than in a page or a proxy: Server Functions POST to the route of t
 page they're used on, so nothing outside them covers them. The `isAdmin()` call in
 `app/admin/page.tsx` only decides what to render.
 
-## Five things that are easy to get wrong
+## Seven things that are easy to get wrong
 
 **The reveal gate is server-side.** If the client filtered the dots they would be
 one devtools tab away. `boardFor()` in `lib/queries.ts` doesn't *select* the
@@ -126,8 +132,28 @@ its revalidation can outlast the moment someone starts typing the next entry, an
 the fields stay editable throughout. `IdeaForm` and `NewGridForm` therefore reset
 through a functional update that no-ops if anything changed since the submit.
 
+**Which dot is yours is a shape, not a colour.** It used to be hue — yours was
+the orange one — which stopped meaning anything the moment players could pick
+their own. Ownership is now a halo ring on your own mark, so it survives eight
+people choosing eight colours, and two of them choosing the same one. Identity
+never rested on colour anyway: the initials label and `PlotList` carry that.
+
+**The reveal animates once, and only on the commit that opens the board.**
+`Board` catches the `false → true` edge of `committed` — a reload renders the
+same dots with no entrance, because a reload is not a reveal, and neither is an
+archived board. Only the *mark* scales: `.plane-dot-label` is already using
+`transform` to centre itself, and a keyframe animating `transform` would throw
+that away and hang every label off the wrong side of its dot.
+
 Coordinates are stored normalised `-1…1` with **+y up**; the DOM's y grows
 downward, so it's negated on render.
+
+Player colour is the one identity field that is **not** snapshotted onto the
+plot. `plots.initials` is, because renaming yourself must not rewrite old boards;
+colour is joined from `players` at read time, so changing it repaints every board
+you are on, past weeks included. That is a deliberate difference, not an
+oversight — initials say who you were that week, colour is just how you like to
+look.
 
 ## Weekly use
 
@@ -136,6 +162,6 @@ grid archives itself and stays readable at `/archive`. Same link every week.
 
 ## Deploy
 
-1. Supabase → SQL Editor → run `supabase/migrations/0001_init.sql`.
+1. Supabase → SQL Editor → run the files in `supabase/migrations/` in order.
 2. Settings → Database → Connection string → **Transaction pooler** (6543).
 3. Vercel → Add New → Project → import this repo → paste the three env vars.

@@ -1,5 +1,7 @@
-import InitialsEntry from "@/components/InitialsEntry";
+import Link from "next/link";
 import Board from "@/components/Board";
+import Onboarding from "@/components/Onboarding";
+import { colorFor } from "@/lib/colors";
 import { activeGrid, boardFor } from "@/lib/queries";
 import { getPlayer } from "@/lib/session";
 
@@ -12,22 +14,20 @@ export default async function Home() {
   if (!grid) {
     return (
       <div className="stack">
-        <h1>Nothing up yet</h1>
+        <h1>Between rounds</h1>
         <p className="notice">
-          No grid is live right now. Check back, or leave an idea for the next one.
+          No grid is up at the moment. The next one goes up when someone puts it
+          there — <Link href="/ideas">suggest one</Link>, or have a look at{" "}
+          <Link href="/archive">what the house has argued about</Link> so far.
         </p>
       </div>
     );
   }
 
+  // Having initials is the record that you have been here before, so this is
+  // also what keeps the intro a once-ever thing rather than a weekly toll.
   if (!player?.initials) {
-    return (
-      <div className="stack">
-        <h1>{grid.title ?? "This week"}</h1>
-        <p className="meta">Three initials, then you can place yourself.</p>
-        <InitialsEntry cta="Continue" />
-      </div>
-    );
+    return <Onboarding grid={grid} />;
   }
 
   const board = await boardFor(grid.id, player.id);
@@ -40,9 +40,10 @@ export default async function Home() {
         plots={board.plots}
         myPlot={board.myPlot}
         count={board.count}
+        color={colorFor(player.color, player.initials)}
       />
       <p className="meta" style={{ marginTop: 16 }}>
-        Signed in as <strong>{player.initials}</strong>.
+        You&apos;re <strong>{player.initials}</strong>.
       </p>
     </>
   );

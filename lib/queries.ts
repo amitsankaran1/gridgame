@@ -1,3 +1,4 @@
+import { colorFor } from "./colors";
 import { query, queryOne } from "./db";
 import type { ArchiveEntry, Grid, Idea, PublicPlot } from "./types";
 
@@ -70,14 +71,27 @@ export async function boardFor(
 /**
  * player_id collapses to a boolean before it leaves this module: the client
  * needs to know which dot is yours and has no business seeing anyone's id.
+ *
+ * Colour is joined from `players` rather than snapshotted onto the plot, so
+ * changing your colour repaints every board you are on, this week's and every
+ * past one. That is the opposite of what `plots.initials` does, on purpose:
+ * initials identify you on a given week and must not be rewritten, colour is
+ * only how you like to look.
  */
 async function publicPlots(
   gridId: string,
   playerId: string | null,
 ): Promise<PublicPlot[]> {
-  const rows = await query<{ initials: string; x: number; y: number; player_id: string }>(
-    `select initials, x, y, player_id from plots
-      where grid_id = $1 order by created_at asc`,
+  const rows = await query<{
+    initials: string;
+    x: number;
+    y: number;
+    player_id: string;
+    color: string | null;
+  }>(
+    `select p.initials, p.x, p.y, p.player_id, pl.color
+       from plots p join players pl on pl.id = p.player_id
+      where p.grid_id = $1 order by p.created_at asc`,
     [gridId],
   );
   return rows.map((row) => ({
@@ -85,6 +99,7 @@ async function publicPlots(
     x: row.x,
     y: row.y,
     isMe: playerId !== null && row.player_id === playerId,
+    color: colorFor(row.color, row.initials),
   }));
 }
 

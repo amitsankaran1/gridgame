@@ -1,3 +1,5 @@
+import type { PlayerColor } from "./colors";
+
 export type Grid = {
   id: string;
   title: string | null;
@@ -16,6 +18,8 @@ export type PublicPlot = {
   x: number;
   y: number;
   isMe: boolean;
+  /** Resolved through colorFor(), so this is always a real palette name. */
+  color: PlayerColor;
 };
 
 export type Idea = {

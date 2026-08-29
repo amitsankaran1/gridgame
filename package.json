@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "migrate": "node --env-file=.env.local scripts/sql.mjs --file supabase/migrations/0001_init.sql",
+    "migrate": "node --env-file=.env.local scripts/sql.mjs --dir supabase/migrations",
     "sql": "node --env-file=.env.local scripts/sql.mjs",
     "test": "node tests/e2e.mjs"
   },

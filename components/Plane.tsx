@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import type { PlayerColor } from "@/lib/colors";
 import type { Grid, PublicPlot } from "@/lib/types";
 
 /**
@@ -45,6 +46,7 @@ type Placed = {
   key: string;
   initials: string;
   isMe: boolean;
+  color: PlayerColor;
   /** Where the dot is drawn — the ring position, not the raw coordinate. */
   x: number;
   y: number;
@@ -86,6 +88,7 @@ function place(plots: PublicPlot[]): { dots: Placed[]; rings: Ring[] } {
         key: `${only.initials}-${only.x}-${only.y}`,
         initials: only.initials,
         isMe: only.isMe,
+        color: only.color,
         x: only.x,
         y: only.y,
         labelAbove: false,
@@ -107,6 +110,7 @@ function place(plots: PublicPlot[]): { dots: Placed[]; rings: Ring[] } {
         key: `${plot.initials}-${plot.x}-${plot.y}-${index}`,
         initials: plot.initials,
         isMe: plot.isMe,
+        color: plot.color,
         x: clamp(cx + dx),
         y: clamp(cy + dy),
         // The upper half of the ring labels upward, which doubles the vertical
@@ -126,9 +130,24 @@ type Props = {
   /** Your own position, shown as the draggable marker. */
   marker?: { x: number; y: number } | null;
   onMarkerChange?: (point: { x: number; y: number }) => void;
+  /** The marker's colour — yours, so the aim matches the dot you commit to. */
+  markerColor?: PlayerColor;
+  /**
+   * Animate the dots in. Set only for the render that follows your own commit:
+   * that is the reveal, and it happens once. A reload or an archived board
+   * renders the same dots with no entrance, because neither is a reveal.
+   */
+  entrance?: boolean;
 };
 
-export default function Plane({ grid, plots, marker, onMarkerChange }: Props) {
+export default function Plane({
+  grid,
+  plots,
+  marker,
+  onMarkerChange,
+  markerColor,
+  entrance,
+}: Props) {
   const squareRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
   const interactive = typeof onMarkerChange === "function";
@@ -189,6 +208,16 @@ export default function Plane({ grid, plots, marker, onMarkerChange }: Props) {
 
   const { dots, rings } = plots ? place(plots) : { dots: [], rings: [] };
 
+  /**
+   * Stagger order for the entrance. Your own dot goes first whatever the query
+   * returned, because the reveal is the answer to "where did I land" before it
+   * is the answer to "where did everyone else".
+   */
+  const order = new Map<string, number>();
+  [...dots]
+    .sort((a, b) => Number(b.isMe) - Number(a.isMe))
+    .forEach((dot, index) => order.set(dot.key, index));
+
   return (
     <div className="plane">
       <div className="plane-label plane-label-y">{grid.y_top}</div>
@@ -243,6 +272,7 @@ export default function Plane({ grid, plots, marker, onMarkerChange }: Props) {
             <div
               key={ring.key}
               className="plane-cluster"
+              data-entrance={entrance ? "" : undefined}
               style={{
                 left: toOffset(ring.cx),
                 top: toOffset(-ring.cy),
@@ -258,7 +288,15 @@ export default function Plane({ grid, plots, marker, onMarkerChange }: Props) {
             <div
               key={dot.key}
               className={`plane-dot${dot.isMe ? " is-me" : ""}${dot.labelAbove ? " label-above" : ""}`}
-              style={{ left: toOffset(dot.x), top: toOffset(-dot.y) }}
+              data-color={dot.color}
+              data-entrance={entrance ? "" : undefined}
+              style={
+                {
+                  left: toOffset(dot.x),
+                  top: toOffset(-dot.y),
+                  "--i": order.get(dot.key) ?? 0,
+                } as React.CSSProperties
+              }
             >
               <span className="plane-dot-mark" />
               <span className="plane-dot-label">{dot.initials}</span>
@@ -268,6 +306,7 @@ export default function Plane({ grid, plots, marker, onMarkerChange }: Props) {
           {marker && (
             <div
               className="plane-marker"
+              data-color={markerColor}
               style={{ left: toOffset(marker.x), top: toOffset(-marker.y) }}
             >
               <span className="plane-marker-mark" />
@@ -319,6 +358,7 @@ export function PlotList({ plots }: { plots: PublicPlot[] }) {
           {plots.map((plot, index) => (
             <tr key={`${plot.initials}-${index}`} className={plot.isMe ? "is-me" : undefined}>
               <td>
+                <span className="plot-chip" data-color={plot.color} aria-hidden="true" />
                 {plot.initials}
                 {plot.isMe && <span className="you-tag">you</span>}
               </td>
