@@ -112,6 +112,53 @@ const escapedLabels = (containerSel, labelSel) => (page) =>
   );
 
 /**
+ * Axis labels have to stay readable when a mark sits on that edge. Opacity 0
+ * used to count as "fading" and made the left axis vanish on a phone. A paper
+ * halo was not enough: a plum mark showed through the first letters.
+ */
+const axisLabelReport = (page) =>
+  page.evaluate(() => {
+    const square = document.querySelector(".plane-square").getBoundingClientRect();
+    const alphaOf = (color) => {
+      const n = color.match(/[\d.]+/g)?.map(Number) ?? [];
+      return n.length === 4 ? n[3] : 1;
+    };
+    return ["top", "bottom", "left", "right"].map((edge) => {
+      const el = document.querySelector(`.plane-label-${edge}`);
+      const r = el.getBoundingClientRect();
+      const s = getComputedStyle(el);
+      return {
+        edge,
+        text: (el.textContent || "").trim(),
+        opacity: Number(s.opacity),
+        fill: alphaOf(s.backgroundColor),
+        visible: typeof el.checkVisibility === "function" ? el.checkVisibility() : s.opacity !== "0",
+        clipped:
+          r.left < square.left - 0.5 ||
+          r.right > square.right + 0.5 ||
+          r.top < square.top - 0.5 ||
+          r.bottom > square.bottom + 0.5,
+        w: Math.round(r.width),
+        h: Math.round(r.height),
+      };
+    });
+  });
+
+const initialsOnLabel = (page, edge) =>
+  page.evaluate((edge) => {
+    const label = document.querySelector(`.plane-label-${edge}`);
+    const initials = document.querySelector(".plane-dot.is-me .plane-dot-label");
+    if (!label || !initials) return { hit: false, missing: true };
+    const a = label.getBoundingClientRect();
+    const b = initials.getBoundingClientRect();
+    return {
+      hit: a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top,
+      label: { l: Math.round(a.left), r: Math.round(a.right), t: Math.round(a.top), b: Math.round(a.bottom) },
+      initials: { l: Math.round(b.left), r: Math.round(b.right), t: Math.round(b.top), b: Math.round(b.bottom) },
+    };
+  }, edge);
+
+/**
  * Dots now animate in when the board opens up. Their transforms are mid-flight
  * for a few hundred milliseconds, so anything measuring geometry has to let the
  * entrance finish or it measures a dot that is still 30% of its final size.
@@ -193,10 +240,10 @@ const admin = await person();
   const forms = admin.page.locator("form.stack");
   const newGrid = forms.last();
   await newGrid.locator("input").nth(0).fill("Test week");
-  await newGrid.locator("input").nth(1).fill("chill");
-  await newGrid.locator("input").nth(2).fill("not chill");
-  await newGrid.locator("input").nth(3).fill("low maintenance");
-  await newGrid.locator("input").nth(4).fill("high maintenance");
+  await newGrid.locator("input").nth(1).fill("low maintenance");
+  await newGrid.locator("input").nth(2).fill("high maintenance");
+  await newGrid.locator("input").nth(3).fill("not chill");
+  await newGrid.locator("input").nth(4).fill("chill");
   await newGrid.getByRole("button", { name: "Put it up" }).click();
   await admin.page.waitForSelector(".card-title:has-text('Test week')", { timeout: 10_000 });
   ok(true, "a typed grid goes live");
@@ -600,6 +647,67 @@ const tie = [];
   ok(small.length === 0, "every visible button clears a 44px tap target", JSON.stringify(small));
 }
 
+// ─────────────────────────────────────────── axis labels under an edge mark
+group("Axis labels stay readable under an edge mark");
+{
+  // The production bug: a two-word left label vanished on a 390px phone when
+  // someone sat mid-left, because `.is-crowded` set opacity: 0. The first fix
+  // kept the label but a plum mark still ate the first letters — halo sits
+  // around the glyphs, not through their counters. Paper fill + parking the
+  // initials inward is the remaining job.
+  const { ctx, page } = await person(390);
+  await setInitials(page, "QAL", "plum");
+
+  const spots = [
+    { x: -1, y: 0, on: "left" },
+    { x: 1, y: 0, on: "right" },
+    { x: 0, y: 1, on: "top" },
+    { x: 0, y: -1, on: "bottom" },
+  ];
+  for (const [i, spot] of spots.entries()) {
+    if (i > 0) await page.getByRole("button", { name: "Move me" }).click();
+    await placeAt(page, spot.x, spot.y);
+    ok(
+      (await page.locator('.plane-dot.is-me[data-color="plum"]').count()) === 1,
+      `the edge mark is plum on the ${spot.on} edge`,
+    );
+    const report = await axisLabelReport(page);
+    for (const label of report) {
+      ok(
+        label.visible &&
+          label.opacity >= 0.5 &&
+          label.fill >= 0.95 &&
+          !label.clipped &&
+          label.w > 0 &&
+          label.h > 0 &&
+          label.text.length > 0,
+        `${label.edge} axis label stays readable with a plum mark on the ${spot.on} edge`,
+        JSON.stringify(label),
+      );
+    }
+    const parked = await initialsOnLabel(page, spot.on);
+    ok(
+      !parked.hit,
+      `initials do not sit on the ${spot.on} axis label`,
+      JSON.stringify(parked),
+    );
+  }
+
+  const texts = Object.fromEntries((await axisLabelReport(page)).map((l) => [l.edge, l.text]));
+  ok(
+    texts.left.split(/\s+/).length >= 2 && /maintenance/i.test(texts.left),
+    "the left axis is a two-word label like the production case",
+    texts.left,
+  );
+  ok(
+    texts.right.split(/\s+/).length >= 2 && /maintenance/i.test(texts.right),
+    "…and so is the right",
+    texts.right,
+  );
+
+  await ctx.close();
+}
+
 // ───────────────────────────────────────────────────── colours
 // After the tie, deliberately: that test counts every dot on the board, and a
 // player created here would be one more than it expects.
@@ -875,7 +983,7 @@ group("Sharing");
   ok(shared !== null, "clicking it opens the share sheet where there is one");
   ok(shared?.url === `${BASE}/`, "…with the board's own URL, no query string", shared?.url);
   ok(
-    typeof shared?.text === "string" && shared.text.includes("chill"),
+    typeof shared?.text === "string" && shared.text.includes("maintenance"),
     "…and this week's question in the text",
     shared?.text,
   );

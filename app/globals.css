@@ -189,20 +189,22 @@ a {
   /* The square is a pointer target. A label that swallowed a pointerdown
      would be a dead patch you could not plot on. */
   pointer-events: none;
-  transition: opacity 140ms ease;
+  /* Above the dots. A mark on this edge used to fade the label to zero — that
+     is how the left axis vanished on a phone when someone sat mid-left. The
+     name has to stay, so the label sits on top of the overlapping mark. */
+  z-index: 1;
+  /* A paper chip, not a halo. text-shadow sits around the glyphs, so a plum
+     mark showed through the counters of "Early" and the first letters went
+     muddy. An opaque fill of --paper punches the name out of the mark. The
+     3px extra is box-shadow, not padding, so the box does not grow into the
+     square's overflow:hidden. */
+  background: var(--paper);
+  box-shadow: 0 0 0 3px var(--paper);
   /* A label is capped at 40 characters but not at 40 *words* — one long
      unbreakable run ignores the max-width below. Outside the square that
      overhung it; inside, the square's overflow clips it instead, which is no
      more readable. */
   overflow-wrap: anywhere;
-}
-
-/* A mark has landed on this label. Fade rather than hide: opacity leaves the
-   text in the accessibility tree, so a screen reader still reads the axis name
-   while someone is parked on it, and the readout under the square spells it
-   out in words either way. */
-.plane-label.is-crowded {
-  opacity: 0;
 }
 
 .plane-label-top,
@@ -334,9 +336,39 @@ a {
   color: var(--dot, var(--dot-them));
 }
 
-.plane-dot.label-above .plane-dot-label {
+.plane-dot.label-above .plane-dot-label,
+.plane-marker.label-above .plane-dot-label {
   top: auto;
   bottom: 8px;
+}
+
+/* A mark on a side label used to park its initials on the first letters.
+   Hang them just past the paper chip, still next to the mark, so "QAL"
+   sits in the square rather than on "Early Bird". 28px clears a two-line
+   16px label plus the chip's 3px halo. */
+.plane-dot.label-east .plane-dot-label,
+.plane-marker.label-east .plane-dot-label {
+  left: 8px;
+  top: 28px;
+  transform: none;
+}
+
+.plane-dot.label-west .plane-dot-label,
+.plane-marker.label-west .plane-dot-label {
+  left: -8px;
+  top: 28px;
+  transform: translateX(-100%);
+}
+
+.plane-dot.label-south .plane-dot-label,
+.plane-marker.label-south .plane-dot-label {
+  top: 28px;
+}
+
+.plane-dot.label-north .plane-dot-label,
+.plane-marker.label-north .plane-dot-label {
+  top: auto;
+  bottom: 28px;
 }
 
 /* Which dot is yours used to be carried by hue alone — yours was the orange
