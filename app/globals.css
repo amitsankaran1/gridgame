@@ -189,20 +189,25 @@ a {
   /* The square is a pointer target. A label that swallowed a pointerdown
      would be a dead patch you could not plot on. */
   pointer-events: none;
-  transition: opacity 140ms ease;
+  /* Above the dots. A mark on this edge used to fade the label to zero — that
+     is how the left axis vanished on a phone when someone sat mid-left. The
+     name has to stay, so the label sits on top of the overlapping mark. */
+  z-index: 1;
+  /* A paper halo, not a fade: the words stay readable over a brown dot.
+     Paint only — padding on a background would grow the box and clip
+     against the square's overflow:hidden. */
+  text-shadow:
+    0 0 4px var(--paper),
+    0 0 8px var(--paper),
+    1px 0 0 var(--paper),
+    -1px 0 0 var(--paper),
+    0 1px 0 var(--paper),
+    0 -1px 0 var(--paper);
   /* A label is capped at 40 characters but not at 40 *words* — one long
      unbreakable run ignores the max-width below. Outside the square that
      overhung it; inside, the square's overflow clips it instead, which is no
      more readable. */
   overflow-wrap: anywhere;
-}
-
-/* A mark has landed on this label. Fade rather than hide: opacity leaves the
-   text in the accessibility tree, so a screen reader still reads the axis name
-   while someone is parked on it, and the readout under the square spells it
-   out in words either way. */
-.plane-label.is-crowded {
-  opacity: 0;
 }
 
 .plane-label-top,
