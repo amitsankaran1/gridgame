@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { imLine, sharePath, toSharePlot, type ShareAxes } from "@/lib/share";
 
 /**
  * Share the link, once you've earned it by placing yourself.
@@ -10,26 +11,36 @@ import { useEffect, useRef, useState } from "react";
  * share sheet, so the link lands in iMessage or WhatsApp in one tap. Desktop
  * browsers mostly lack it, so they fall back to the clipboard, and anything
  * that blocks both gets the URL as selectable text rather than a dead button.
+ *
+ * A placed share is an I'm-line plus a /s?… URL whose OG card is this plot
+ * alone. First-timers never reach this button — the board hides it until you
+ * commit — and if they did, it would still send the generic /.
  */
 export default function ShareButton({
-  question,
+  axes,
+  plot,
   primary = false,
 }: {
-  question: string;
+  axes: ShareAxes;
+  /** Plane −1…1. Null means no plot yet: share / , not /s. */
+  plot: { x: number; y: number } | null;
   /** The sheet leads with it; the button row beside "Move my dot" does not. */
   primary?: boolean;
 }) {
   // window doesn't exist while this renders on the server, and reading it
   // during render would be a hydration mismatch. The button is useless for the
   // few milliseconds before this lands, so it stays disabled until then.
-  const [url, setUrl] = useState("");
+  const [origin, setOrigin] = useState("");
   const [note, setNote] = useState<"copied" | "manual" | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const card = plot ? { ...axes, ...toSharePlot(plot.x, plot.y) } : null;
+  const path = card ? sharePath(card) : "/";
+  const url = origin ? `${origin}${path}` : "";
+  const text = card ? imLine(card) : "";
+
   useEffect(() => {
-    // origin, not href: the same board every week, with no query string picked
-    // up from wherever the sharer happened to arrive from.
-    setUrl(`${window.location.origin}/`);
+    setOrigin(window.location.origin);
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
@@ -43,9 +54,9 @@ export default function ShareButton({
   }
 
   async function share() {
-    const text = `Where do you sit? ${question}`;
     if (navigator.share) {
       try {
+        // Native share: I'm-line in `text`, /s?… in `url`. No dare.
         await navigator.share({ title: "gridgame", text, url });
         return;
       } catch (err) {
@@ -56,7 +67,8 @@ export default function ShareButton({
       }
     }
     try {
-      await navigator.clipboard.writeText(url);
+      // Clipboard has one string: the I'm-line, then the /s?… URL.
+      await navigator.clipboard.writeText(card ? `${text}\n${url}` : url);
       flash("copied");
     } catch {
       flash("manual");

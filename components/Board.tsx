@@ -76,7 +76,12 @@ export default function Board({
     });
   }
 
-  const question = `${grid.x_left} ↔ ${grid.x_right}`;
+  const axes = {
+    xl: grid.x_left,
+    xr: grid.x_right,
+    yt: grid.y_top,
+    yb: grid.y_bottom,
+  };
 
   return (
     <div className="stack">
@@ -137,7 +142,7 @@ export default function Board({
           </button>
           {/* Only here: sharing is offered once you have skin in the game, and
               never while the board is still locked to you. */}
-          <ShareButton question={question} />
+          <ShareButton axes={axes} plot={myPlot} />
           <button className="button link" onClick={() => setShowList((v) => !v)}>
             {showList ? "hide list" : "show as list"}
           </button>
@@ -151,7 +156,8 @@ export default function Board({
       <ShareDialog
         open={justJoined}
         onClose={() => setJustJoined(false)}
-        question={question}
+        axes={axes}
+        plot={myPlot}
       />
     </div>
   );

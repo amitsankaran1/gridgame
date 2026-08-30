@@ -31,6 +31,7 @@ export async function setProfile(rawInitials: string, rawColor: unknown): Promis
     color,
   ]);
   revalidatePath("/");
+  revalidatePath("/s");
   // A colour change repaints past boards too, so the archive is stale as well.
   revalidatePath("/archive", "layout");
   return {};
@@ -59,6 +60,7 @@ export async function placeDot(rawX: unknown, rawY: unknown): Promise<ActionResu
     [grid.id, player.id, player.initials, x, y],
   );
   revalidatePath("/");
+  revalidatePath("/s");
   return {};
 }
 
