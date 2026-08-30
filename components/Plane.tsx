@@ -64,6 +64,30 @@ type Ring = { key: string; cx: number; cy: number; radius: number };
 type Edge = "top" | "bottom" | "left" | "right";
 
 /**
+ * Initials hang below the mark by default, which is how a plum "QAL" sat on
+ * the first letters of a two-word left label. When a mark is on an axis
+ * label, park the initials just past the chip so they don't sit on the words.
+ */
+const EDGE = 0.62;
+const ALONG = 0.5;
+
+type InitialsDir = "below" | "above" | "east" | "west" | "south" | "north";
+
+function initialsDir(x: number, y: number, labelAbove: boolean): InitialsDir {
+  if (x <= -EDGE && Math.abs(y) <= ALONG) return "east";
+  if (x >= EDGE && Math.abs(y) <= ALONG) return "west";
+  if (y <= -EDGE && Math.abs(x) <= ALONG) return "north";
+  if (y >= EDGE && Math.abs(x) <= ALONG) return "south";
+  if (labelAbove) return "above";
+  return "below";
+}
+
+function initialsClass(dir: InitialsDir): string {
+  if (dir === "below") return "";
+  return ` label-${dir}`;
+}
+
+/**
  * Greedy clustering by distance. Bucketing into grid cells is cheaper but
  * misses the common case: two dots a hair apart on opposite sides of a cell
  * boundary land in different buckets and overlap anyway.
@@ -274,8 +298,8 @@ export default function Plane({
           <div className="plane-axis plane-axis-y" />
 
           {/* Inside the square, each centred on the axis it names. A mark on
-              an edge used to fade that label to zero; the CSS halo keeps the
-              name readable instead. */}
+              an edge used to fade that label to zero; a paper chip keeps the
+              name readable over the mark instead. */}
           {label("top", grid.y_top)}
           {label("bottom", grid.y_bottom)}
           {label("left", grid.x_left)}
@@ -300,7 +324,7 @@ export default function Plane({
           {dots.map((dot) => (
             <div
               key={dot.key}
-              className={`plane-dot${dot.isMe ? " is-me" : ""}${dot.labelAbove ? " label-above" : ""}`}
+              className={`plane-dot${dot.isMe ? " is-me" : ""}${initialsClass(initialsDir(dot.x, dot.y, dot.labelAbove))}`}
               data-color={dot.color}
               data-entrance={entrance ? "" : undefined}
               style={
@@ -318,7 +342,7 @@ export default function Plane({
 
           {marker && (
             <div
-              className="plane-marker"
+              className={`plane-marker${initialsClass(initialsDir(marker.x, marker.y, false))}`}
               data-color={markerColor}
               style={{ left: toOffset(marker.x), top: toOffset(-marker.y) }}
             >
