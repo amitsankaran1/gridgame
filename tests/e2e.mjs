@@ -218,6 +218,11 @@ group("The share preview image");
     og ?? "(missing)",
   );
   ok(
+    typeof og === "string" && new URL(og).pathname === "/opengraph-image",
+    "…and / still uses the generic homepage card, not /s",
+    og,
+  );
+  ok(
     (await page.locator('meta[name="twitter:card"]').getAttribute("content")) ===
       "summary_large_image",
     "…and twitter is told to render it large",
@@ -873,10 +878,40 @@ group("Sharing");
   await share.click();
   const shared = await page.evaluate(() => window.__shared);
   ok(shared !== null, "clicking it opens the share sheet where there is one");
-  ok(shared?.url === `${BASE}/`, "…with the board's own URL, no query string", shared?.url);
+  const sharedUrl = typeof shared?.url === "string" ? new URL(shared.url) : null;
   ok(
-    typeof shared?.text === "string" && shared.text.includes("chill"),
-    "…and this week's question in the text",
+    sharedUrl !== null && sharedUrl.pathname === "/s" && sharedUrl.searchParams.has("xl"),
+    "…with a /s? URL, not the homepage",
+    shared?.url,
+  );
+  ok(
+    sharedUrl &&
+      sharedUrl.searchParams.get("xl") === "chill" &&
+      sharedUrl.searchParams.get("xr") === "not chill" &&
+      sharedUrl.searchParams.get("yt") === "high maintenance" &&
+      sharedUrl.searchParams.get("yb") === "low maintenance" &&
+      sharedUrl.searchParams.has("x") &&
+      sharedUrl.searchParams.has("y"),
+    "…carrying this grid's four labels and the 0–1 plot",
+    shared?.url,
+  );
+  ok(
+    sharedUrl &&
+      Number(sharedUrl.searchParams.get("x")) >= 0 &&
+      Number(sharedUrl.searchParams.get("x")) <= 1 &&
+      Number(sharedUrl.searchParams.get("y")) >= 0 &&
+      Number(sharedUrl.searchParams.get("y")) <= 1,
+    "…with x and y in 0–1",
+    shared?.url,
+  );
+  ok(
+    shared?.text === "I'm chill, high maintenance.",
+    "…and the I'm-line only, no dare",
+    shared?.text,
+  );
+  ok(
+    typeof shared?.text === "string" && !shared.text.includes("Where do you sit"),
+    "…and not the old Where do you sit? line",
     shared?.text,
   );
 
@@ -898,10 +933,11 @@ group("Sharing");
   await stubShare(null);
   await share.click();
   await page.waitForSelector("text=Link copied");
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
   ok(
-    (await page.evaluate(() => navigator.clipboard.readText())) === `${BASE}/`,
-    "without a share sheet it copies the link instead",
-    await page.evaluate(() => navigator.clipboard.readText()),
+    copied.includes("I'm chill, high maintenance.") && copied.includes("/s?"),
+    "without a share sheet it copies the I'm-line and the /s? URL",
+    copied,
   );
 
   // Tier three: neither works — the link still has to be gettable.
@@ -910,10 +946,96 @@ group("Sharing");
   });
   await share.click();
   await page.waitForSelector(".share-url");
+  const shown = await page.locator(".share-url").inputValue();
   ok(
-    (await page.locator(".share-url").inputValue()) === `${BASE}/`,
-    "with neither, the URL is shown as selectable text rather than a dead button",
+    shown.startsWith(`${BASE}/s?`) && shown.includes("xl="),
+    "with neither, the /s? URL is shown as selectable text rather than a dead button",
+    shown,
   );
+
+  await page.getByRole("button", { name: "Move me" }).click();
+  await placeAt(page, 0, 0);
+  await page.evaluate(() => {
+    window.__shared = null;
+  });
+  await stubShare(`(data) => { window.__shared = data; return Promise.resolve(); }`);
+  await share.click();
+  const centred = await page.evaluate(() => window.__shared);
+  ok(
+    centred?.text === "I'm on the line this week.",
+    "dead centre shares the on-the-line line",
+    centred?.text,
+  );
+
+  await ctx.close();
+}
+
+// ─────────────────────────────────────────────── a personal share page
+group("The personal share page");
+{
+  const qs =
+    "xl=Early+Bird&xr=Night+Owl&yt=Extrovert&yb=Introvert&x=0.22&y=0.81";
+  const { ctx, page } = await person();
+
+  const pageRes = await ctx.request.get(`${BASE}/s?${qs}`, { maxRedirects: 0 });
+  ok(pageRes.status() === 200, "/s is a real 200, not a redirect", `status ${pageRes.status()}`);
+  ok(
+    !pageRes.headers()["location"],
+    "…and does not 302 to /",
+    pageRes.headers()["location"],
+  );
+
+  await page.goto(`${BASE}/s?${qs}`);
+  const ogTags = await page.locator('meta[property="og:image"]').evaluateAll((els) =>
+    els.map((el) => el.getAttribute("content")),
+  );
+  const og = ogTags[0];
+  ok(
+    ogTags.length >= 1 &&
+      ogTags.every((href) => typeof href === "string" && href.includes("/s/opengraph-image")),
+    "og:image is this share's image, not the homepage's",
+    JSON.stringify(ogTags),
+  );
+  ok(
+    typeof og === "string" &&
+      og.includes("xl=") &&
+      og.includes("x=0.22") &&
+      og.includes("y=0.81"),
+    "…and the image URL carries the four labels and the plot",
+    og,
+  );
+  ok(
+    (await page.locator('meta[name="twitter:card"]').getAttribute("content")) ===
+      "summary_large_image",
+    "…and twitter is told to render it large",
+  );
+
+  const img = await ctx.request.get(`${BASE}/s/opengraph-image?${qs}`);
+  ok(img.status() === 200, "the personal image renders", `status ${img.status()}`);
+  ok(
+    img.headers()["content-type"] === "image/png",
+    "…as a png",
+    img.headers()["content-type"],
+  );
+  const bytes = Buffer.from(await img.body());
+  const width = bytes.readUInt32BE(16);
+  const height = bytes.readUInt32BE(20);
+  ok(
+    bytes.subarray(0, 8).toString("hex") === "89504e470d0a1a0a",
+    "…that is really a png, not an error page",
+  );
+  ok(width === 1200 && height === 630, "…at 1200x630", `${width}x${height}`);
+
+  const homeImg = await ctx.request.get(`${BASE}/opengraph-image`);
+  ok(homeImg.status() === 200, "the homepage OG route is still 200", `status ${homeImg.status()}`);
+
+  // A first-timer who opens someone else's /s still hits the live board
+  // behind the reveal gate — the query is for crawlers, not a peek.
+  await page.goto(`${BASE}/s?${qs}`);
+  ok(await page.locator(".splash-plane").isVisible(), "a newcomer on /s still gets the intro");
+  const raw = await (await ctx.request.get(`${BASE}/s?${qs}`)).text();
+  ok(!raw.includes("BBB"), "…and /s does not leak a plotted player's initials");
+
   await ctx.close();
 }
 

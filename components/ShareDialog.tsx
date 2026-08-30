@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 import ShareButton from "@/components/ShareButton";
+import type { ShareAxes } from "@/lib/share";
 
 /**
  * The prompt that appears the moment you land on the board.
@@ -17,11 +18,13 @@ import ShareButton from "@/components/ShareButton";
 export default function ShareDialog({
   open,
   onClose,
-  question,
+  axes,
+  plot,
 }: {
   open: boolean;
   onClose: () => void;
-  question: string;
+  axes: ShareAxes;
+  plot: { x: number; y: number } | null;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
 
@@ -58,7 +61,7 @@ export default function ShareDialog({
           Got next week&apos;s grid? <Link href="/ideas">Suggest one</Link>.
         </p>
         <div className="row">
-          <ShareButton question={question} primary />
+          <ShareButton axes={axes} plot={plot} primary />
           <button className="button link" onClick={onClose}>
             not now
           </button>
