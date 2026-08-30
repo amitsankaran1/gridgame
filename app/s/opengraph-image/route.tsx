@@ -1,5 +1,5 @@
 import { parseShareCard } from "@/lib/share";
-import { shareImageResponse, shareOgSize } from "@/lib/share-og";
+import { shareImageResponse } from "@/lib/share-og";
 
 // Node, not Edge: ImageResponse is fine on either, but this matches the
 // homepage card so a future pg read would not surprise us.
@@ -7,10 +7,6 @@ export const runtime = "nodejs";
 // Query params are the whole card. A cached image would pin the first
 // unfurl's plot onto every later share of /s.
 export const dynamic = "force-dynamic";
-
-export const alt = "This week's grid";
-export const size = shareOgSize;
-export const contentType = "image/png";
 
 /**
  * The public image for /s. File-convention opengraph-image.tsx cannot see
